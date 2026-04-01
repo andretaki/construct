@@ -273,6 +273,12 @@ html, body {
   align-items: center;
 }
 
+.label-zoom {
+  font-size: 9px;
+  color: #89b4fa;
+  font-weight: 600;
+}
+
 .terminal-cell.locked {
   border-color: rgba(243, 139, 168, 0.25);
 }

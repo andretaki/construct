@@ -33,6 +33,7 @@
 
   var currentTerminalCount = 0;
   var layoutPickerSelectedIdx = 0;
+  var zoomedTerminalId = -1;
 
   var TERMINAL_OPTIONS = {
     allowTransparency: true,
@@ -429,6 +430,7 @@
   function setLayout(count) {
     var layout = getLayout(count);
     if (!layout) return;
+    unzoomIfNeeded();
     var grid = document.getElementById('grid');
 
     // Update CSS grid dimensions
@@ -466,6 +468,62 @@
         entries[i].fitAddon.fit();
         window.terminalAPI.resize(i, entries[i].terminal.cols, entries[i].terminal.rows);
       }
+    }
+  }
+
+  // ── Pane Zoom ────────────────────────────────────────────────
+
+  function toggleZoom() {
+    var grid = document.getElementById('grid');
+
+    if (zoomedTerminalId >= 0) {
+      // Unzoom — restore all cells
+      for (var i = 0; i < entries.length; i++) {
+        var cell = document.getElementById('terminal-' + i);
+        if (!cell) continue;
+        cell.style.display = '';
+        cell.style.gridColumn = '';
+        cell.style.gridRow = '';
+        cell.classList.remove('zoomed');
+      }
+      var zLabel = document.querySelector('#terminal-' + zoomedTerminalId + ' .label-zoom');
+      if (zLabel) zLabel.remove();
+      zoomedTerminalId = -1;
+      setTimeout(refitAll, 50);
+      return;
+    }
+
+    var id = getFocusedTerminalId();
+    if (id < 0) return;
+
+    zoomedTerminalId = id;
+
+    for (var i = 0; i < entries.length; i++) {
+      var cell = document.getElementById('terminal-' + i);
+      if (!cell) continue;
+      if (i === id) {
+        cell.style.gridColumn = '1 / -1';
+        cell.style.gridRow = '1 / -1';
+        cell.classList.add('zoomed');
+      } else {
+        cell.style.display = 'none';
+      }
+    }
+
+    var label = document.querySelector('#terminal-' + id + ' .terminal-label');
+    if (label && !label.querySelector('.label-zoom')) {
+      var zBadge = document.createElement('span');
+      zBadge.className = 'label-zoom';
+      zBadge.textContent = '[Z]';
+      label.appendChild(zBadge);
+    }
+
+    setTimeout(refitAll, 50);
+  }
+
+  function unzoomIfNeeded() {
+    if (zoomedTerminalId >= 0) {
+      toggleZoom();
     }
   }
 
@@ -777,6 +835,7 @@
     var num = parseInt(e.key, 10);
     if (num >= 1 && num <= 9 && num <= currentTerminalCount) {
       e.preventDefault();
+      unzoomIfNeeded();
       focusTerminal(num - 1);
       return;
     }
@@ -798,6 +857,7 @@
       if (e.key === 'V') { e.preventDefault(); pasteClipboard(); return; }
       if (e.key === 'M') { e.preventDefault(); toggleScreensaver(); return; }
       if (e.key === 'G') { e.preventDefault(); openLayoutPicker(); return; }
+      if (e.key === 'Z') { e.preventDefault(); toggleZoom(); return; }
     }
   });
 
