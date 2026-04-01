@@ -86,7 +86,7 @@
       'knock knock',
       'free your mind',
       'I know kung fu',
-      'guns. lots of guns.',
+      'remember all I offer is the truth',
       'what is real?',
       'do not try to bend the spoon',
       'choice is an illusion',
