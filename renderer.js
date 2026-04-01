@@ -74,10 +74,28 @@
     running: false,
     chars: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFZ'.split(''),
     fontSize: 14,
+    frameCount: 0,
+
+    // Subliminal messages — flash briefly every few seconds
+    subliminals: [
+      'wake up',
+      'there is no spoon',
+      'follow the white rabbit',
+      'you are the one',
+      'the matrix has you',
+      'knock knock',
+      'free your mind',
+    ],
+    subliminalIdx: 0,
+    subliminalFrame: 0,
+    subliminalVisible: 0, // frames remaining to show
 
     start: function () {
       if (this.running) return;
       this.running = true;
+      this.frameCount = 0;
+      this.subliminalFrame = 0;
+      this.subliminalVisible = 0;
       this.canvas = document.getElementById('matrix-rain');
       if (!this.canvas) return;
       this.canvas.style.display = 'block';
@@ -101,6 +119,7 @@
       var w = this.canvas.width;
       var h = this.canvas.height;
       var fs = this.fontSize;
+      this.frameCount++;
 
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, w, h);
@@ -119,6 +138,26 @@
           this.drops[i] = 0;
         }
         this.drops[i]++;
+      }
+
+      // Subliminal message — flash every ~4 seconds for 3 frames
+      if (this.frameCount % 240 === 0) {
+        this.subliminalVisible = 3;
+        this.subliminalIdx = (this.subliminalIdx + 1) % this.subliminals.length;
+      }
+
+      if (this.subliminalVisible > 0) {
+        var msg = this.subliminals[this.subliminalIdx];
+        ctx.save();
+        ctx.font = 'bold 18px monospace';
+        ctx.fillStyle = 'rgba(0, 255, 70, 0.12)';
+        ctx.textAlign = 'center';
+        // Random position each flash — different spot each time
+        var x = w * 0.2 + Math.random() * w * 0.6;
+        var y = h * 0.2 + Math.random() * h * 0.6;
+        ctx.fillText(msg, x, y);
+        ctx.restore();
+        this.subliminalVisible--;
       }
 
       var self = this;
