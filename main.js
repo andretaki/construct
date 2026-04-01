@@ -3,6 +3,11 @@ const pty = require('node-pty');
 const path = require('path');
 const os = require('os');
 
+// Force software rendering on WSL2 / systems without GPU
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+
 const TERMINAL_COUNT = 6;
 const shell = os.platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
 

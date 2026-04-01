@@ -76,7 +76,7 @@
     fontSize: 14,
     frameCount: 0,
 
-    // Subliminal messages — flash briefly every few seconds
+    // Subliminal messages — trail down vertically like rain columns
     subliminals: [
       'wake up',
       'there is no spoon',
@@ -87,15 +87,14 @@
       'free your mind',
     ],
     subliminalIdx: 0,
-    subliminalFrame: 0,
-    subliminalVisible: 0, // frames remaining to show
+    // Active trailing message: { x, startRow, charIdx, text }
+    activeMsg: null,
 
     start: function () {
       if (this.running) return;
       this.running = true;
       this.frameCount = 0;
-      this.subliminalFrame = 0;
-      this.subliminalVisible = 0;
+      this.activeMsg = null;
       this.canvas = document.getElementById('matrix-rain');
       if (!this.canvas) return;
       this.canvas.style.display = 'block';
@@ -140,24 +139,39 @@
         this.drops[i]++;
       }
 
-      // Subliminal message — flash every ~4 seconds for 3 frames
-      if (this.frameCount % 240 === 0) {
-        this.subliminalVisible = 3;
+      // Subliminal message — spawn a new trailing message every ~6 seconds
+      if (this.frameCount % 360 === 0 && !this.activeMsg) {
+        var text = this.subliminals[this.subliminalIdx];
         this.subliminalIdx = (this.subliminalIdx + 1) % this.subliminals.length;
+        var col = Math.floor(Math.random() * (this.drops.length - text.length));
+        this.activeMsg = { col: col, row: 0, charIdx: 0, text: text };
       }
 
-      if (this.subliminalVisible > 0) {
-        var msg = this.subliminals[this.subliminalIdx];
-        ctx.save();
-        ctx.font = 'bold 18px monospace';
-        ctx.fillStyle = 'rgba(0, 255, 70, 0.12)';
-        ctx.textAlign = 'center';
-        // Random position each flash — different spot each time
-        var x = w * 0.2 + Math.random() * w * 0.6;
-        var y = h * 0.2 + Math.random() * h * 0.6;
-        ctx.fillText(msg, x, y);
-        ctx.restore();
-        this.subliminalVisible--;
+      // Render trailing message — one new character every 3 frames
+      if (this.activeMsg) {
+        var m = this.activeMsg;
+        if (this.frameCount % 3 === 0 && m.charIdx < m.text.length) {
+          m.charIdx++;
+        }
+        // Draw all revealed characters vertically
+        for (var c = 0; c < m.charIdx; c++) {
+          var age = m.charIdx - c;
+          // Lead character is bright white, trail fades to dim green
+          if (c === m.charIdx - 1) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold ' + fs + 'px monospace';
+          } else {
+            var alpha = Math.max(0.08, 0.5 - age * 0.04);
+            ctx.fillStyle = 'rgba(0, 255, 70, ' + alpha + ')';
+            ctx.font = fs + 'px monospace';
+          }
+          ctx.fillText(m.text[c], (m.col + c) * fs, (m.row + c) * fs);
+        }
+        // Message fully revealed — let it fade naturally with the rain
+        if (m.charIdx >= m.text.length) {
+          m.row++;
+          if (m.row > 30) this.activeMsg = null;
+        }
       }
 
       var self = this;
