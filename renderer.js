@@ -459,7 +459,10 @@
     currentTerminalCount = count;
     localStorage.setItem('construct-layout', String(count));
 
-    setTimeout(refitAll, 50);
+    setTimeout(function () {
+      refitAll();
+      showResizeOverlay();
+    }, 50);
   }
 
   function refitAll() {
@@ -875,12 +878,35 @@
     });
   }
 
-  // ── Debounced Resize ──────────────────────────────────────────
+  // ── Debounced Resize + Overlay ────────────────────────────────
 
   var resizeTimer = null;
+  var resizeOverlayTimer = null;
+
+  function showResizeOverlay() {
+    var id = getFocusedTerminalId();
+    if (id < 0) id = 0;
+    if (!entries[id]) return;
+    var overlay = document.getElementById('resize-overlay');
+    overlay.textContent = entries[id].terminal.cols + ' \u00D7 ' + entries[id].terminal.rows;
+    overlay.classList.remove('fade-out');
+    overlay.classList.add('visible');
+
+    clearTimeout(resizeOverlayTimer);
+    resizeOverlayTimer = setTimeout(function () {
+      overlay.classList.add('fade-out');
+      setTimeout(function () {
+        overlay.classList.remove('visible', 'fade-out');
+      }, 300);
+    }, 800);
+  }
+
   window.addEventListener('resize', function () {
     if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(refitAll, 50);
+    resizeTimer = setTimeout(function () {
+      refitAll();
+      showResizeOverlay();
+    }, 50);
   });
 
   function boot() {

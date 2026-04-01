@@ -87,6 +87,37 @@ html, body {
   pointer-events: none;
 }
 
+/* ── Resize Overlay ───────────────────────────── */
+
+#resize-overlay {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25;
+  background: rgba(30, 30, 46, 0.8);
+  border: 1px solid rgba(137, 180, 250, 0.3);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  color: #89b4fa;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+#resize-overlay.visible {
+  display: block;
+  opacity: 1;
+}
+
+#resize-overlay.fade-out {
+  opacity: 0;
+}
+
 /* ── Terminal Grid ─────────────────────────────── */
 
 #grid {
