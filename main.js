@@ -25,31 +25,54 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
-function createPtys() {
+// Output buffers for throttled IPC (one per terminal)
+const outputBuffers = new Array(TERMINAL_COUNT).fill('');
+const FLUSH_INTERVAL = 16; // ~60fps
+
+function flushOutput(id) {
+  if (outputBuffers[id] && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(`pty-output-${id}`, outputBuffers[id]);
+    outputBuffers[id] = '';
+  }
+}
+
+function spawnPty(id, cols, rows) {
+  if (ptys[id]) return; // already spawned
+
+  const ptyProcess = pty.spawn(shell, [], {
+    name: 'xterm-256color',
+    cols: cols || 80,
+    rows: rows || 24,
+    cwd: os.homedir(),
+    env: process.env,
+  });
+
+  // Throttled output — buffer data and flush at 60fps
+  let flushTimer = null;
+  ptyProcess.onData((data) => {
+    outputBuffers[id] += data;
+    if (!flushTimer) {
+      flushTimer = setTimeout(() => {
+        flushOutput(id);
+        flushTimer = null;
+      }, FLUSH_INTERVAL);
+    }
+  });
+
+  ptys[id] = ptyProcess;
+}
+
+function setupPtyIPC() {
   for (let id = 0; id < TERMINAL_COUNT; id++) {
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
-      cwd: os.homedir(),
-      env: process.env,
-    });
-
-    ptyProcess.onData((data) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`pty-output-${id}`, data);
-      }
-    });
-
     ipcMain.on(`pty-input-${id}`, (_event, data) => {
-      ptyProcess.write(data);
+      if (!ptys[id]) spawnPty(id);
+      ptys[id].write(data);
     });
 
     ipcMain.on(`pty-resize-${id}`, (_event, { cols, rows }) => {
-      ptyProcess.resize(cols, rows);
+      if (!ptys[id]) spawnPty(id, cols, rows);
+      else ptys[id].resize(cols, rows);
     });
-
-    ptys.push(ptyProcess);
   }
 }
 
@@ -62,10 +85,12 @@ ipcMain.on('window-close', () => { mainWindow.close(); });
 
 app.whenReady().then(() => {
   createWindow();
-  createPtys();
+  setupPtyIPC();
+  // Spawn first terminal immediately, rest are lazy
+  spawnPty(0);
 });
 
 app.on('window-all-closed', () => {
-  ptys.forEach((p) => p.kill());
+  ptys.forEach((p) => { if (p) p.kill(); });
   app.quit();
 });

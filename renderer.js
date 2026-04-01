@@ -10,6 +10,7 @@
 
   const Terminal = window.Terminal;
   const FitAddon = window.FitAddon.FitAddon;
+  const WebglAddon = window.WebglAddon.WebglAddon;
 
   const TERMINAL_COUNT = 6;
 
@@ -141,6 +142,18 @@
 
       terminal.loadAddon(fitAddon);
       terminal.open(container);
+
+      // WebGL renderer — 5-10x faster than Canvas 2D
+      try {
+        var webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(function () {
+          webglAddon.dispose();
+        });
+        terminal.loadAddon(webglAddon);
+      } catch (e) {
+        // WebGL not available, falls back to canvas automatically
+      }
+
       fitAddon.fit();
 
       // User input → pty
@@ -219,9 +232,13 @@
     });
   }
 
-  // ── Resize & Boot ────────────────────────────────────────────
+  // ── Debounced Resize ──────────────────────────────────────────
 
-  window.addEventListener('resize', refitAll);
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(refitAll, 50);
+  });
 
   function boot() {
     initWindowControls();
