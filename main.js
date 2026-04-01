@@ -8,7 +8,7 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 
-const TERMINAL_COUNT = 6;
+const MAX_TERMINALS = 16;
 const shell = os.platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
 
 let mainWindow;
@@ -19,7 +19,8 @@ function createWindow() {
     width: 1200,
     height: 800,
     frame: false,
-    backgroundColor: '#11111b',
+    transparent: true,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -30,8 +31,8 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
-// Output buffers for throttled IPC (one per terminal)
-const outputBuffers = new Array(TERMINAL_COUNT).fill('');
+// Output buffers for throttled IPC (keyed by terminal id)
+const outputBuffers = {};
 const FLUSH_INTERVAL = 16; // ~60fps
 
 function flushOutput(id) {
@@ -43,6 +44,7 @@ function flushOutput(id) {
 
 function spawnPty(id, cols, rows) {
   if (ptys[id]) return; // already spawned
+  if (outputBuffers[id] === undefined) outputBuffers[id] = '';
 
   const ptyProcess = pty.spawn(shell, [], {
     name: 'xterm-256color',
@@ -68,7 +70,7 @@ function spawnPty(id, cols, rows) {
 }
 
 function setupPtyIPC() {
-  for (let id = 0; id < TERMINAL_COUNT; id++) {
+  for (let id = 0; id < MAX_TERMINALS; id++) {
     ipcMain.on(`pty-input-${id}`, (_event, data) => {
       if (!ptys[id]) spawnPty(id);
       ptys[id].write(data);
@@ -79,6 +81,14 @@ function setupPtyIPC() {
       else ptys[id].resize(cols, rows);
     });
   }
+
+  // Kill a PTY when a terminal is removed
+  ipcMain.on('pty-kill', (_event, id) => {
+    if (ptys[id]) {
+      ptys[id].kill();
+      ptys[id] = null;
+    }
+  });
 }
 
 // Process completion notifications

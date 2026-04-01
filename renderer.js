@@ -1,4 +1,4 @@
-// renderer.js — wires 6 xterm.js terminals to node-pty via IPC
+// renderer.js — dynamic terminal grid with configurable layout
 //
 // xterm 5.x UMD bundle spreads all its exports onto window directly,
 // so Terminal is available as window.Terminal.
@@ -16,10 +16,26 @@
   var broadcastMode = false;
   var searchVisible = false;
   var snippetVisible = false;
+  var layoutPickerVisible = false;
 
-  const TERMINAL_COUNT = 6;
+  // ── Layout Presets ──────────────────────────────────────────
 
-  const TERMINAL_OPTIONS = {
+  var LAYOUTS = [
+    { count: 1,  cols: 1, rows: 1, label: '1 \u2014 single' },
+    { count: 2,  cols: 2, rows: 1, label: '2 \u2014 side by side' },
+    { count: 3,  cols: 3, rows: 1, label: '3 \u2014 triple' },
+    { count: 4,  cols: 2, rows: 2, label: '4 \u2014 2\u00D72 grid' },
+    { count: 6,  cols: 3, rows: 2, label: '6 \u2014 3\u00D72 grid' },
+    { count: 8,  cols: 4, rows: 2, label: '8 \u2014 4\u00D72 grid' },
+    { count: 9,  cols: 3, rows: 3, label: '9 \u2014 3\u00D73 grid' },
+    { count: 12, cols: 4, rows: 3, label: '12 \u2014 4\u00D73 grid' },
+  ];
+
+  var currentTerminalCount = 0;
+  var layoutPickerSelectedIdx = 0;
+
+  var TERMINAL_OPTIONS = {
+    allowTransparency: true,
     cursorBlink: true,
     cursorStyle: 'bar',
     cursorWidth: 2,
@@ -35,7 +51,7 @@
     drawBoldTextInBrightColors: true,
     minimumContrastRatio: 1,
     theme: {
-      background: '#1e1e2e',
+      background: 'rgba(30, 30, 46, 0.85)',
       foreground: '#cdd6f4',
       cursor: '#f5e0dc',
       cursorAccent: '#1e1e2e',
@@ -72,11 +88,10 @@
     animId: null,
     drops: [],
     running: false,
-    chars: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFZ'.split(''),
+    chars: '\u30A2\u30A4\u30A6\u30A8\u30AA\u30AB\u30AD\u30AF\u30B1\u30B3\u30B5\u30B7\u30B9\u30BB\u30BD\u30BF\u30C1\u30C4\u30C6\u30C8\u30CA\u30CB\u30CC\u30CD\u30CE\u30CF\u30D2\u30D5\u30D8\u30DB\u30DE\u30DF\u30E0\u30E1\u30E2\u30E4\u30E6\u30E8\u30E9\u30EA\u30EB\u30EC\u30ED\u30EF\u30F2\u30F30123456789ABCDEFZ'.split(''),
     fontSize: 14,
     frameCount: 0,
 
-    // Subliminal messages — trail down vertically like rain columns
     subliminals: [
       'wake up',
       'there is no spoon',
@@ -97,7 +112,6 @@
       'everything has an end',
     ],
     subliminalIdx: 0,
-    // Active trailing message: { x, startRow, charIdx, text }
     activeMsg: null,
 
     start: function () {
@@ -179,7 +193,6 @@
           ctx.fillText(m.text[c], m.x, m.y + c * (fs + 1));
         }
         ctx.restore();
-        // Fade out quicker
         if (m.charIdx >= m.text.length) {
           m.age++;
           if (m.age > m.text.length * 2 + 40) this.activeMsg = null;
@@ -227,13 +240,13 @@
   var screensaverActive = false;
 
   function resetAfkTimer() {
-    if (manualRain) return; // Don't interrupt manual toggle
+    if (manualRain) return;
     if (screensaverActive) {
       screensaverActive = false;
       rain.stop();
       setTimeout(function () { rain.hide(); }, FADE_DURATION);
       for (var i = 0; i < entries.length; i++) {
-        if (document.activeElement === entries[i].terminal.textarea) {
+        if (entries[i] && document.activeElement === entries[i].terminal.textarea) {
           entries[i].terminal.focus();
           break;
         }
@@ -269,121 +282,188 @@
     resetAfkTimer();
   }
 
-  // ── Terminal Setup ───────────────────────────────────────────
+  // ── Terminal Management ─────────────────────────────────────
 
-  /** @type {{ terminal: *, fitAddon: *, locked: boolean, lastOutputTime: number }[]} */
+  /** @type {({ terminal: *, fitAddon: *, searchAddon: *, locked: boolean, lastOutputTime: number } | null)[]} */
   var entries = [];
 
-  function initTerminals() {
-    for (let id = 0; id < TERMINAL_COUNT; id++) {
-      const container = document.getElementById(`terminal-${id}`);
-      if (!container) {
-        console.error(`[renderer] container #terminal-${id} not found`);
-        continue;
-      }
-
-      const terminal = new Terminal(TERMINAL_OPTIONS);
-      const fitAddon = new FitAddon();
-      const searchAddon = new SearchAddon();
-
-      terminal.loadAddon(fitAddon);
-      terminal.loadAddon(searchAddon);
-      terminal.open(container);
-
-      // WebGL renderer — 5-10x faster than Canvas 2D
-      try {
-        var webglAddon = new WebglAddon();
-        webglAddon.onContextLoss(function () {
-          webglAddon.dispose();
-        });
-        terminal.loadAddon(webglAddon);
-      } catch (e) {
-        // WebGL not available, falls back to canvas automatically
-      }
-
-      fitAddon.fit();
-
-      // User input → pty (blocked when locked, broadcast when enabled)
-      terminal.onData(function (data) {
-        if (broadcastMode) {
-          entries.forEach(function (entry, idx) {
-            if (!entry.locked) window.terminalAPI.send(idx, data);
-          });
-        } else if (!entries[id] || !entries[id].locked) {
-          window.terminalAPI.send(id, data);
-        }
-      });
-
-      // Multiline paste warning
-      terminal.textarea.addEventListener('paste', function (e) {
-        var text = (e.clipboardData || window.clipboardData).getData('text');
-        var lines = text.split('\n').length;
-        if (lines > 1) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (confirm('Paste ' + lines + ' lines into terminal ' + (id + 1) + '?')) {
-            window.terminalAPI.send(id, text);
-          }
-        }
-      }, true);
-
-      // pty output → terminal display + track activity for notifications
-      var outputTimer = null;
-      window.terminalAPI.onData(id, function (data) {
-        terminal.write(data);
-        entries[id].lastOutputTime = Date.now();
-
-        // Process completion detection: if output stops for 3s after activity,
-        // and the window is blurred, fire a notification
-        clearTimeout(outputTimer);
-        outputTimer = setTimeout(function () {
-          if (!document.hasFocus()) {
-            window.terminalAPI.notify(id);
-          }
-        }, 3000);
-      });
-
-      // Send initial dimensions to pty
-      window.terminalAPI.resize(id, terminal.cols, terminal.rows);
-
-      // Double-click label to rename
-      var labelName = container.querySelector('.label-name');
-      if (labelName) {
-        labelName.style.pointerEvents = 'auto';
-        labelName.style.cursor = 'pointer';
-        labelName.addEventListener('dblclick', function () {
-          var name = prompt('Rename terminal ' + (id + 1) + ':', labelName.textContent);
-          if (name !== null && name.trim()) labelName.textContent = name.trim();
-        });
-      }
-
-      entries.push({ terminal, fitAddon, searchAddon, locked: false, lastOutputTime: 0 });
+  function getLayout(count) {
+    for (var i = 0; i < LAYOUTS.length; i++) {
+      if (LAYOUTS[i].count === count) return LAYOUTS[i];
     }
+    return null;
+  }
+
+  function getInitialCount() {
+    var saved = localStorage.getItem('construct-layout');
+    if (saved) {
+      var count = parseInt(saved, 10);
+      if (getLayout(count)) return count;
+    }
+    return 6;
+  }
+
+  function createTerminalCell(id) {
+    var cell = document.createElement('div');
+    cell.className = 'terminal-cell';
+    cell.id = 'terminal-' + id;
+
+    var label = document.createElement('div');
+    label.className = 'terminal-label';
+
+    var num = document.createElement('span');
+    num.className = 'label-num';
+    num.textContent = String(id + 1);
+
+    var name = document.createElement('span');
+    name.className = 'label-name';
+    name.textContent = 'shell';
+
+    var lock = document.createElement('span');
+    lock.className = 'label-lock';
+    lock.style.display = 'none';
+    lock.textContent = '\uD83D\uDD12';
+
+    label.appendChild(num);
+    label.appendChild(name);
+    label.appendChild(lock);
+    cell.appendChild(label);
+
+    return cell;
+  }
+
+  function setupTerminal(id) {
+    var container = document.getElementById('terminal-' + id);
+    if (!container) return;
+
+    var terminal = new Terminal(TERMINAL_OPTIONS);
+    var fitAddon = new FitAddon();
+    var searchAddon = new SearchAddon();
+
+    terminal.loadAddon(fitAddon);
+    terminal.loadAddon(searchAddon);
+    terminal.open(container);
+
+    // WebGL renderer — 5-10x faster than Canvas 2D
+    try {
+      var webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(function () { webglAddon.dispose(); });
+      terminal.loadAddon(webglAddon);
+    } catch (e) {
+      // WebGL not available, falls back to canvas automatically
+    }
+
+    fitAddon.fit();
+
+    // User input -> pty (blocked when locked, broadcast when enabled)
+    terminal.onData(function (data) {
+      if (broadcastMode) {
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i] && !entries[i].locked) window.terminalAPI.send(i, data);
+        }
+      } else if (entries[id] && !entries[id].locked) {
+        window.terminalAPI.send(id, data);
+      }
+    });
+
+    // Multiline paste warning
+    terminal.textarea.addEventListener('paste', function (e) {
+      var text = (e.clipboardData || window.clipboardData).getData('text');
+      var lines = text.split('\n').length;
+      if (lines > 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (confirm('Paste ' + lines + ' lines into terminal ' + (id + 1) + '?')) {
+          window.terminalAPI.send(id, text);
+        }
+      }
+    }, true);
+
+    // pty output -> terminal display + track activity for notifications
+    var outputTimer = null;
+    window.terminalAPI.onData(id, function (data) {
+      terminal.write(data);
+      if (entries[id]) entries[id].lastOutputTime = Date.now();
+
+      clearTimeout(outputTimer);
+      outputTimer = setTimeout(function () {
+        if (!document.hasFocus()) {
+          window.terminalAPI.notify(id);
+        }
+      }, 3000);
+    });
+
+    // Send initial dimensions to pty
+    window.terminalAPI.resize(id, terminal.cols, terminal.rows);
+
+    // Double-click label to rename
+    var labelName = container.querySelector('.label-name');
+    if (labelName) {
+      labelName.style.pointerEvents = 'auto';
+      labelName.style.cursor = 'pointer';
+      labelName.addEventListener('dblclick', function () {
+        var newName = prompt('Rename terminal ' + (id + 1) + ':', labelName.textContent);
+        if (newName !== null && newName.trim()) labelName.textContent = newName.trim();
+      });
+    }
+
+    entries[id] = { terminal: terminal, fitAddon: fitAddon, searchAddon: searchAddon, locked: false, lastOutputTime: 0 };
+  }
+
+  function setLayout(count) {
+    var layout = getLayout(count);
+    if (!layout) return;
+    var grid = document.getElementById('grid');
+
+    // Update CSS grid dimensions
+    grid.style.gridTemplateColumns = 'repeat(' + layout.cols + ', 1fr)';
+    grid.style.gridTemplateRows = 'repeat(' + layout.rows + ', 1fr)';
+
+    // Remove excess terminals if shrinking
+    for (var i = count; i < currentTerminalCount; i++) {
+      if (entries[i]) {
+        entries[i].terminal.dispose();
+        entries[i] = null;
+      }
+      var cell = document.getElementById('terminal-' + i);
+      if (cell) cell.remove();
+      window.terminalAPI.offData(i);
+      window.terminalAPI.killPty(i);
+    }
+
+    // Add new terminals if growing
+    for (var i = currentTerminalCount; i < count; i++) {
+      grid.appendChild(createTerminalCell(i));
+      setupTerminal(i);
+    }
+
+    entries.length = count;
+    currentTerminalCount = count;
+    localStorage.setItem('construct-layout', String(count));
+
+    setTimeout(refitAll, 50);
   }
 
   function refitAll() {
-    entries.forEach(function ({ terminal, fitAddon }, id) {
-      fitAddon.fit();
-      window.terminalAPI.resize(id, terminal.cols, terminal.rows);
-    });
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i]) {
+        entries[i].fitAddon.fit();
+        window.terminalAPI.resize(i, entries[i].terminal.cols, entries[i].terminal.rows);
+      }
+    }
   }
 
-  // ── Focus Management & Keyboard Shortcuts ────────────────────
+  // ── Focus Management ────────────────────────────────────────
 
   function focusTerminal(id) {
-    if (id >= 0 && id < entries.length) {
+    if (id >= 0 && id < entries.length && entries[id]) {
       entries[id].terminal.focus();
     }
   }
 
-  function renameTerminal(id, name) {
-    var label = document.querySelector('#terminal-' + id + ' .label-name');
-    if (label) { label.textContent = name; }
-  }
-
   function getFocusedTerminalId() {
     for (var i = 0; i < entries.length; i++) {
-      if (document.activeElement === entries[i].terminal.textarea) {
+      if (entries[i] && document.activeElement === entries[i].terminal.textarea) {
         return i;
       }
     }
@@ -391,7 +471,7 @@
   }
 
   function toggleLock(id) {
-    if (id < 0 || id >= entries.length) return;
+    if (id < 0 || id >= entries.length || !entries[id]) return;
     entries[id].locked = !entries[id].locked;
     var lockIcon = document.querySelector('#terminal-' + id + ' .label-lock');
     if (lockIcon) {
@@ -427,7 +507,7 @@
     document.getElementById('search-bar').classList.remove('active');
     document.getElementById('search-input').value = '';
     var id = getFocusedTerminalId();
-    if (id >= 0) {
+    if (id >= 0 && entries[id]) {
       entries[id].searchAddon.clearDecorations();
       entries[id].terminal.focus();
     }
@@ -436,7 +516,7 @@
   document.getElementById('search-input').addEventListener('input', function (e) {
     var id = getFocusedTerminalId();
     if (id < 0) id = 0;
-    entries[id].searchAddon.findNext(e.target.value);
+    if (entries[id]) entries[id].searchAddon.findNext(e.target.value);
   });
 
   document.getElementById('search-input').addEventListener('keydown', function (e) {
@@ -444,8 +524,10 @@
     if (e.key === 'Enter') {
       var id = getFocusedTerminalId();
       if (id < 0) id = 0;
-      if (e.shiftKey) entries[id].searchAddon.findPrevious(e.target.value);
-      else entries[id].searchAddon.findNext(e.target.value);
+      if (entries[id]) {
+        if (e.shiftKey) entries[id].searchAddon.findPrevious(e.target.value);
+        else entries[id].searchAddon.findNext(e.target.value);
+      }
     }
   });
 
@@ -480,7 +562,7 @@
     document.getElementById('snippet-palette').classList.remove('active');
     document.getElementById('snippet-overlay').classList.remove('active');
     var id = getFocusedTerminalId();
-    if (id >= 0) entries[id].terminal.focus();
+    if (id >= 0 && entries[id]) entries[id].terminal.focus();
   }
 
   function renderSnippets(filter) {
@@ -490,7 +572,6 @@
              s.cmd.toLowerCase().indexOf(filter.toLowerCase()) !== -1;
     });
     snippetSelectedIdx = 0;
-    // Clear and rebuild with safe DOM methods
     while (list.firstChild) list.removeChild(list.firstChild);
     filtered.forEach(function (s, i) {
       var item = document.createElement('div');
@@ -510,7 +591,7 @@
   function executeSnippet(cmd) {
     var id = getFocusedTerminalId();
     if (id < 0) id = 0;
-    if (!entries[id].locked) {
+    if (entries[id] && !entries[id].locked) {
       window.terminalAPI.send(id, cmd + '\n');
     }
     closeSnippetPalette();
@@ -553,11 +634,81 @@
 
   document.getElementById('snippet-overlay').addEventListener('click', closeSnippetPalette);
 
+  // ── Layout Picker ──────────────────────────────────────────
+
+  function openLayoutPicker() {
+    layoutPickerVisible = true;
+    document.getElementById('layout-palette').classList.add('active');
+    document.getElementById('layout-overlay').classList.add('active');
+    layoutPickerSelectedIdx = 0;
+    for (var i = 0; i < LAYOUTS.length; i++) {
+      if (LAYOUTS[i].count === currentTerminalCount) {
+        layoutPickerSelectedIdx = i;
+        break;
+      }
+    }
+    renderLayoutOptions();
+  }
+
+  function closeLayoutPicker() {
+    layoutPickerVisible = false;
+    document.getElementById('layout-palette').classList.remove('active');
+    document.getElementById('layout-overlay').classList.remove('active');
+    var id = getFocusedTerminalId();
+    if (id >= 0 && entries[id]) entries[id].terminal.focus();
+  }
+
+  function renderLayoutOptions() {
+    var list = document.getElementById('layout-list');
+    while (list.firstChild) list.removeChild(list.firstChild);
+    LAYOUTS.forEach(function (layout, i) {
+      var item = document.createElement('div');
+      item.className = 'layout-item';
+      if (i === layoutPickerSelectedIdx) item.className += ' selected';
+      item.setAttribute('data-count', String(layout.count));
+
+      // Grid preview: small dots arranged in the grid pattern
+      var preview = document.createElement('span');
+      preview.className = 'layout-preview';
+      preview.style.gridTemplateColumns = 'repeat(' + layout.cols + ', 8px)';
+      for (var idx = 0; idx < layout.cols * layout.rows; idx++) {
+        var dot = document.createElement('span');
+        dot.className = 'layout-dot';
+        if (idx < layout.count) dot.classList.add('filled');
+        preview.appendChild(dot);
+      }
+
+      var labelSpan = document.createElement('span');
+      labelSpan.className = 'layout-label';
+      labelSpan.textContent = layout.label;
+
+      var badge = document.createElement('span');
+      badge.className = 'layout-current';
+      if (layout.count === currentTerminalCount) badge.textContent = 'current';
+
+      item.appendChild(preview);
+      item.appendChild(labelSpan);
+      item.appendChild(badge);
+      list.appendChild(item);
+    });
+  }
+
+  document.getElementById('layout-list').addEventListener('click', function (e) {
+    var item = e.target.closest('.layout-item');
+    if (item) {
+      var count = parseInt(item.getAttribute('data-count'), 10);
+      setLayout(count);
+      closeLayoutPicker();
+    }
+  });
+
+  document.getElementById('layout-overlay').addEventListener('click', closeLayoutPicker);
+
   // ── Copy/Paste ──────────────────────────────────────────────
 
   function copySelection() {
     var id = getFocusedTerminalId();
-    if (id >= 0) {
+    if (id >= 0 && entries[id]) {
       var sel = entries[id].terminal.getSelection();
       if (sel) navigator.clipboard.writeText(sel);
     }
@@ -565,7 +716,7 @@
 
   function pasteClipboard() {
     var id = getFocusedTerminalId();
-    if (id < 0) return;
+    if (id < 0 || !entries[id]) return;
     navigator.clipboard.readText().then(function (text) {
       if (!entries[id].locked) {
         window.terminalAPI.send(id, text);
@@ -577,23 +728,48 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      if (layoutPickerVisible) { closeLayoutPicker(); return; }
       if (snippetVisible) { closeSnippetPalette(); return; }
       if (searchVisible) { closeSearch(); return; }
     }
 
+    // Layout picker navigation (no modifier needed while open)
+    if (layoutPickerVisible) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        layoutPickerSelectedIdx = Math.min(layoutPickerSelectedIdx + 1, LAYOUTS.length - 1);
+        renderLayoutOptions();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        layoutPickerSelectedIdx = Math.max(layoutPickerSelectedIdx - 1, 0);
+        renderLayoutOptions();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        setLayout(LAYOUTS[layoutPickerSelectedIdx].count);
+        closeLayoutPicker();
+        return;
+      }
+    }
+
     if (!e.ctrlKey) return;
 
-    // Ctrl+1 through Ctrl+6
-    if (e.key >= '1' && e.key <= '6') {
+    // Ctrl+1 through Ctrl+9 — focus terminal by number
+    var num = parseInt(e.key, 10);
+    if (num >= 1 && num <= 9 && num <= currentTerminalCount) {
       e.preventDefault();
-      focusTerminal(parseInt(e.key, 10) - 1);
+      focusTerminal(num - 1);
       return;
     }
 
     // Ctrl+` to cycle
     if (e.key === '`') {
       e.preventDefault();
-      focusTerminal((getFocusedTerminalId() + 1) % entries.length);
+      var next = (getFocusedTerminalId() + 1) % entries.length;
+      focusTerminal(next);
       return;
     }
 
@@ -605,6 +781,7 @@
       if (e.key === 'C') { e.preventDefault(); copySelection(); return; }
       if (e.key === 'V') { e.preventDefault(); pasteClipboard(); return; }
       if (e.key === 'M') { e.preventDefault(); toggleScreensaver(); return; }
+      if (e.key === 'G') { e.preventDefault(); openLayoutPicker(); return; }
     }
   });
 
@@ -633,7 +810,7 @@
   function boot() {
     initWindowControls();
     runBootRain().then(function () {
-      initTerminals();
+      setLayout(getInitialCount());
       focusTerminal(0);
       initAfkWatcher();
     });
