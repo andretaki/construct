@@ -61,72 +61,135 @@
     },
   };
 
-  // ── Matrix Rain Boot Sequence ──────────────────────────────────
-  var BOOT_DURATION = 2500;
+  // ── Matrix Rain Engine (reusable for boot + screensaver) ────
+
   var FADE_DURATION = 800;
+  var AFK_TIMEOUT = 3 * 60 * 1000; // 3 minutes
 
-  function runMatrixRain() {
-    var canvas = document.getElementById('matrix-rain');
-    if (!canvas) { return Promise.resolve(); }
+  var rain = {
+    canvas: null,
+    ctx: null,
+    animId: null,
+    drops: [],
+    running: false,
+    chars: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFZ'.split(''),
+    fontSize: 14,
 
-    var ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    start: function () {
+      if (this.running) return;
+      this.running = true;
+      this.canvas = document.getElementById('matrix-rain');
+      if (!this.canvas) return;
+      this.canvas.style.display = 'block';
+      this.canvas.classList.remove('fade-out');
+      this.canvas.style.opacity = '1';
+      this.ctx = this.canvas.getContext('2d');
+      this.canvas.width = window.innerWidth;
+      this.canvas.height = window.innerHeight;
 
-    var fontSize = 14;
-    var columns = Math.floor(canvas.width / fontSize);
-    var drops = [];
-    for (var i = 0; i < columns; i++) {
-      drops[i] = Math.random() * -50;
-    }
+      var columns = Math.floor(this.canvas.width / this.fontSize);
+      this.drops = [];
+      for (var i = 0; i < columns; i++) {
+        this.drops[i] = Math.random() * -50;
+      }
+      this._draw();
+    },
 
-    var chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFZ';
-    var charArr = chars.split('');
+    _draw: function () {
+      if (!this.running) return;
+      var ctx = this.ctx;
+      var w = this.canvas.width;
+      var h = this.canvas.height;
+      var fs = this.fontSize;
 
-    var animId;
-    var startTime = Date.now();
-
-    function draw() {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, w, h);
 
-      for (var i = 0; i < drops.length; i++) {
-        var char = charArr[Math.floor(Math.random() * charArr.length)];
-
-        // Lead character is bright white-green, trail is green
+      for (var i = 0; i < this.drops.length; i++) {
+        var char = this.chars[Math.floor(Math.random() * this.chars.length)];
         if (Math.random() > 0.3) {
           ctx.fillStyle = '#0f0';
-          ctx.font = fontSize + 'px monospace';
+          ctx.font = fs + 'px monospace';
         } else {
           ctx.fillStyle = '#aff';
-          ctx.font = 'bold ' + fontSize + 'px monospace';
+          ctx.font = 'bold ' + fs + 'px monospace';
         }
-
-        ctx.fillText(char, i * fontSize, drops[i] * fontSize);
-
-        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-          drops[i] = 0;
+        ctx.fillText(char, i * fs, this.drops[i] * fs);
+        if (this.drops[i] * fs > h && Math.random() > 0.975) {
+          this.drops[i] = 0;
         }
-        drops[i]++;
+        this.drops[i]++;
       }
 
-      if (Date.now() - startTime < BOOT_DURATION) {
-        animId = requestAnimationFrame(draw);
+      var self = this;
+      this.animId = requestAnimationFrame(function () { self._draw(); });
+    },
+
+    stop: function () {
+      if (!this.running) return;
+      this.running = false;
+      if (this.animId) cancelAnimationFrame(this.animId);
+      this.animId = null;
+      if (this.canvas) {
+        this.canvas.classList.add('fade-out');
+      }
+    },
+
+    hide: function () {
+      if (this.canvas) {
+        this.canvas.style.display = 'none';
       }
     }
+  };
 
-    animId = requestAnimationFrame(draw);
-
+  // Boot sequence: rain for 2.5s then fade
+  function runBootRain() {
+    rain.start();
     return new Promise(function (resolve) {
       setTimeout(function () {
-        cancelAnimationFrame(animId);
-        canvas.classList.add('fade-out');
+        rain.stop();
         setTimeout(function () {
-          canvas.remove();
+          rain.hide();
           resolve();
         }, FADE_DURATION);
-      }, BOOT_DURATION);
+      }, 2500);
     });
+  }
+
+  // ── AFK Screensaver ─────────────────────────────────────────
+
+  var afkTimer = null;
+  var screensaverActive = false;
+
+  function resetAfkTimer() {
+    if (screensaverActive) {
+      screensaverActive = false;
+      rain.stop();
+      setTimeout(function () { rain.hide(); }, FADE_DURATION);
+      // Refocus the last active terminal
+      for (var i = 0; i < entries.length; i++) {
+        if (document.activeElement === entries[i].terminal.textarea) {
+          entries[i].terminal.focus();
+          break;
+        }
+      }
+    }
+    clearTimeout(afkTimer);
+    afkTimer = setTimeout(startScreensaver, AFK_TIMEOUT);
+  }
+
+  function startScreensaver() {
+    if (screensaverActive) return;
+    screensaverActive = true;
+    rain.canvas = document.getElementById('matrix-rain');
+    rain.start();
+  }
+
+  function initAfkWatcher() {
+    ['keydown', 'mousemove', 'mousedown', 'touchstart'].forEach(function (evt) {
+      document.addEventListener(evt, resetAfkTimer, { passive: true });
+    });
+    resetAfkTimer();
   }
 
   // ── Terminal Setup ───────────────────────────────────────────
@@ -491,9 +554,10 @@
 
   function boot() {
     initWindowControls();
-    runMatrixRain().then(function () {
+    runBootRain().then(function () {
       initTerminals();
       focusTerminal(0);
+      initAfkWatcher();
     });
   }
 
