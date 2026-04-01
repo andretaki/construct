@@ -139,38 +139,42 @@
         this.drops[i]++;
       }
 
-      // Subliminal message — spawn a new trailing message every ~6 seconds
-      if (this.frameCount % 360 === 0 && !this.activeMsg) {
+      // Subliminal message — spawn every ~4 seconds
+      if (this.frameCount % 240 === 0 && !this.activeMsg) {
         var text = this.subliminals[this.subliminalIdx];
         this.subliminalIdx = (this.subliminalIdx + 1) % this.subliminals.length;
-        var col = Math.floor(Math.random() * (this.drops.length - text.length));
-        this.activeMsg = { col: col, row: 0, charIdx: 0, text: text };
+        // Center-ish, with some randomness
+        var x = w * 0.15 + Math.random() * w * 0.5;
+        var startY = h * 0.15 + Math.random() * h * 0.4;
+        this.activeMsg = { x: x, y: startY, charIdx: 0, text: text, age: 0 };
       }
 
-      // Render trailing message — one new character every 3 frames
+      // Render trailing message vertically — one char every 2 frames
       if (this.activeMsg) {
         var m = this.activeMsg;
-        if (this.frameCount % 3 === 0 && m.charIdx < m.text.length) {
+        m.age++;
+        if (m.age % 2 === 0 && m.charIdx < m.text.length) {
           m.charIdx++;
         }
-        // Draw all revealed characters vertically
+        ctx.save();
+        var msgFs = 20;
+        // Draw all revealed characters going straight down
         for (var c = 0; c < m.charIdx; c++) {
-          var age = m.charIdx - c;
-          // Lead character is bright white, trail fades to dim green
-          if (c === m.charIdx - 1) {
+          var isLead = (c === m.charIdx - 1);
+          if (isLead) {
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold ' + fs + 'px monospace';
+            ctx.font = 'bold ' + msgFs + 'px monospace';
           } else {
-            var alpha = Math.max(0.08, 0.5 - age * 0.04);
-            ctx.fillStyle = 'rgba(0, 255, 70, ' + alpha + ')';
-            ctx.font = fs + 'px monospace';
+            ctx.fillStyle = '#0f0';
+            ctx.font = msgFs + 'px monospace';
           }
-          ctx.fillText(m.text[c], (m.col + c) * fs, (m.row + c) * fs);
+          ctx.fillText(m.text[c], m.x, m.y + c * (msgFs + 2));
         }
-        // Message fully revealed — let it fade naturally with the rain
+        ctx.restore();
+        // After fully revealed, let it linger then clear
         if (m.charIdx >= m.text.length) {
-          m.row++;
-          if (m.row > 30) this.activeMsg = null;
+          m.age++;
+          if (m.age > m.text.length * 2 + 80) this.activeMsg = null;
         }
       }
 
