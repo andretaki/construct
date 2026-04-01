@@ -15,6 +15,16 @@
       <button class="titlebar-btn titlebar-btn-close" id="btn-close">&#x2715;</button>
     </div>
   </div>
+  <div id="broadcast-bar">BROADCAST MODE — typing in all terminals</div>
+  <div id="search-bar">
+    <input id="search-input" type="text" placeholder="Search terminal..." spellcheck="false" />
+    <span id="search-close">&#x2715;</span>
+  </div>
+  <div id="snippet-palette">
+    <input id="snippet-input" type="text" placeholder="Type command or search snippets..." spellcheck="false" />
+    <div id="snippet-list"></div>
+  </div>
+  <div id="snippet-overlay"></div>
   <canvas id="matrix-rain"></canvas>
   <div id="grid">
     <div class="terminal-cell" id="terminal-0">
@@ -39,6 +49,7 @@
   <script src="node_modules/xterm/lib/xterm.js"></script>
   <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
   <script src="node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
+  <script src="node_modules/xterm-addon-search/lib/xterm-addon-search.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

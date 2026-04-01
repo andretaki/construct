@@ -11,6 +11,11 @@
   const Terminal = window.Terminal;
   const FitAddon = window.FitAddon.FitAddon;
   const WebglAddon = window.WebglAddon.WebglAddon;
+  const SearchAddon = window.SearchAddon.SearchAddon;
+
+  var broadcastMode = false;
+  var searchVisible = false;
+  var snippetVisible = false;
 
   const TERMINAL_COUNT = 6;
 
@@ -139,8 +144,10 @@
 
       const terminal = new Terminal(TERMINAL_OPTIONS);
       const fitAddon = new FitAddon();
+      const searchAddon = new SearchAddon();
 
       terminal.loadAddon(fitAddon);
+      terminal.loadAddon(searchAddon);
       terminal.open(container);
 
       // WebGL renderer — 5-10x faster than Canvas 2D
@@ -156,9 +163,13 @@
 
       fitAddon.fit();
 
-      // User input → pty (blocked when locked)
+      // User input → pty (blocked when locked, broadcast when enabled)
       terminal.onData(function (data) {
-        if (!entries[id] || !entries[id].locked) {
+        if (broadcastMode) {
+          entries.forEach(function (entry, idx) {
+            if (!entry.locked) window.terminalAPI.send(idx, data);
+          });
+        } else if (!entries[id] || !entries[id].locked) {
           window.terminalAPI.send(id, data);
         }
       });
@@ -195,7 +206,18 @@
       // Send initial dimensions to pty
       window.terminalAPI.resize(id, terminal.cols, terminal.rows);
 
-      entries.push({ terminal, fitAddon, locked: false, lastOutputTime: 0 });
+      // Double-click label to rename
+      var labelName = container.querySelector('.label-name');
+      if (labelName) {
+        labelName.style.pointerEvents = 'auto';
+        labelName.style.cursor = 'pointer';
+        labelName.addEventListener('dblclick', function () {
+          var name = prompt('Rename terminal ' + (id + 1) + ':', labelName.textContent);
+          if (name !== null && name.trim()) labelName.textContent = name.trim();
+        });
+      }
+
+      entries.push({ terminal, fitAddon, searchAddon, locked: false, lastOutputTime: 0 });
     }
   }
 
@@ -241,8 +263,184 @@
     }
   }
 
-  // Ctrl+1-6 focus, Ctrl+` cycle, Ctrl+Shift+L lock
+  // ── Broadcast Mode ───────────────────────────────────────────
+
+  function toggleBroadcast() {
+    broadcastMode = !broadcastMode;
+    var bar = document.getElementById('broadcast-bar');
+    bar.classList.toggle('active', broadcastMode);
+    document.getElementById('grid').style.height = broadcastMode
+      ? 'calc(100vh - 56px)' : 'calc(100vh - 32px)';
+    refitAll();
+  }
+
+  // ── Search ──────────────────────────────────────────────────
+
+  function openSearch() {
+    searchVisible = true;
+    document.getElementById('search-bar').classList.add('active');
+    document.getElementById('search-input').focus();
+  }
+
+  function closeSearch() {
+    searchVisible = false;
+    document.getElementById('search-bar').classList.remove('active');
+    document.getElementById('search-input').value = '';
+    var id = getFocusedTerminalId();
+    if (id >= 0) {
+      entries[id].searchAddon.clearDecorations();
+      entries[id].terminal.focus();
+    }
+  }
+
+  document.getElementById('search-input').addEventListener('input', function (e) {
+    var id = getFocusedTerminalId();
+    if (id < 0) id = 0;
+    entries[id].searchAddon.findNext(e.target.value);
+  });
+
+  document.getElementById('search-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeSearch(); return; }
+    if (e.key === 'Enter') {
+      var id = getFocusedTerminalId();
+      if (id < 0) id = 0;
+      if (e.shiftKey) entries[id].searchAddon.findPrevious(e.target.value);
+      else entries[id].searchAddon.findNext(e.target.value);
+    }
+  });
+
+  document.getElementById('search-close').addEventListener('click', closeSearch);
+
+  // ── Snippet Palette ─────────────────────────────────────────
+
+  var defaultSnippets = [
+    { name: 'List files', cmd: 'ls -la' },
+    { name: 'Git status', cmd: 'git status' },
+    { name: 'Git log (oneline)', cmd: 'git log --oneline -20' },
+    { name: 'Disk usage', cmd: 'df -h' },
+    { name: 'Process list', cmd: 'ps aux | head -20' },
+    { name: 'Docker containers', cmd: 'docker ps' },
+    { name: 'Network ports', cmd: 'ss -tlnp' },
+    { name: 'System info', cmd: 'uname -a' },
+  ];
+
+  var snippetSelectedIdx = 0;
+
+  function openSnippetPalette() {
+    snippetVisible = true;
+    document.getElementById('snippet-palette').classList.add('active');
+    document.getElementById('snippet-overlay').classList.add('active');
+    document.getElementById('snippet-input').value = '';
+    document.getElementById('snippet-input').focus();
+    renderSnippets('');
+  }
+
+  function closeSnippetPalette() {
+    snippetVisible = false;
+    document.getElementById('snippet-palette').classList.remove('active');
+    document.getElementById('snippet-overlay').classList.remove('active');
+    var id = getFocusedTerminalId();
+    if (id >= 0) entries[id].terminal.focus();
+  }
+
+  function renderSnippets(filter) {
+    var list = document.getElementById('snippet-list');
+    var filtered = defaultSnippets.filter(function (s) {
+      return s.name.toLowerCase().indexOf(filter.toLowerCase()) !== -1 ||
+             s.cmd.toLowerCase().indexOf(filter.toLowerCase()) !== -1;
+    });
+    snippetSelectedIdx = 0;
+    // Clear and rebuild with safe DOM methods
+    while (list.firstChild) list.removeChild(list.firstChild);
+    filtered.forEach(function (s, i) {
+      var item = document.createElement('div');
+      item.className = 'snippet-item' + (i === 0 ? ' selected' : '');
+      item.setAttribute('data-cmd', s.cmd);
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = s.name;
+      var cmdSpan = document.createElement('span');
+      cmdSpan.className = 'snippet-key';
+      cmdSpan.textContent = s.cmd;
+      item.appendChild(nameSpan);
+      item.appendChild(cmdSpan);
+      list.appendChild(item);
+    });
+  }
+
+  function executeSnippet(cmd) {
+    var id = getFocusedTerminalId();
+    if (id < 0) id = 0;
+    if (!entries[id].locked) {
+      window.terminalAPI.send(id, cmd + '\n');
+    }
+    closeSnippetPalette();
+  }
+
+  document.getElementById('snippet-input').addEventListener('input', function (e) {
+    renderSnippets(e.target.value);
+  });
+
+  document.getElementById('snippet-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeSnippetPalette(); return; }
+    var items = document.querySelectorAll('.snippet-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      snippetSelectedIdx = Math.min(snippetSelectedIdx + 1, items.length - 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      snippetSelectedIdx = Math.max(snippetSelectedIdx - 1, 0);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      var input = document.getElementById('snippet-input').value.trim();
+      if (items[snippetSelectedIdx]) {
+        executeSnippet(items[snippetSelectedIdx].getAttribute('data-cmd'));
+      } else if (input) {
+        executeSnippet(input);
+      }
+      return;
+    } else {
+      return;
+    }
+    items.forEach(function (el, i) {
+      el.classList.toggle('selected', i === snippetSelectedIdx);
+    });
+  });
+
+  document.getElementById('snippet-list').addEventListener('click', function (e) {
+    var item = e.target.closest('.snippet-item');
+    if (item) executeSnippet(item.getAttribute('data-cmd'));
+  });
+
+  document.getElementById('snippet-overlay').addEventListener('click', closeSnippetPalette);
+
+  // ── Copy/Paste ──────────────────────────────────────────────
+
+  function copySelection() {
+    var id = getFocusedTerminalId();
+    if (id >= 0) {
+      var sel = entries[id].terminal.getSelection();
+      if (sel) navigator.clipboard.writeText(sel);
+    }
+  }
+
+  function pasteClipboard() {
+    var id = getFocusedTerminalId();
+    if (id < 0) return;
+    navigator.clipboard.readText().then(function (text) {
+      if (!entries[id].locked) {
+        window.terminalAPI.send(id, text);
+      }
+    });
+  }
+
+  // ── All Keyboard Shortcuts ──────────────────────────────────
+
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (snippetVisible) { closeSnippetPalette(); return; }
+      if (searchVisible) { closeSearch(); return; }
+    }
+
     if (!e.ctrlKey) return;
 
     // Ctrl+1 through Ctrl+6
@@ -252,17 +450,20 @@
       return;
     }
 
-    // Ctrl+` to cycle to next terminal
+    // Ctrl+` to cycle
     if (e.key === '`') {
       e.preventDefault();
       focusTerminal((getFocusedTerminalId() + 1) % entries.length);
       return;
     }
 
-    // Ctrl+Shift+L to toggle read-only lock
-    if (e.key === 'L' && e.shiftKey) {
-      e.preventDefault();
-      toggleLock(getFocusedTerminalId());
+    if (e.shiftKey) {
+      if (e.key === 'L') { e.preventDefault(); toggleLock(getFocusedTerminalId()); return; }
+      if (e.key === 'B') { e.preventDefault(); toggleBroadcast(); return; }
+      if (e.key === 'F') { e.preventDefault(); openSearch(); return; }
+      if (e.key === 'P') { e.preventDefault(); openSnippetPalette(); return; }
+      if (e.key === 'C') { e.preventDefault(); copySelection(); return; }
+      if (e.key === 'V') { e.preventDefault(); pasteClipboard(); return; }
     }
   });
 
