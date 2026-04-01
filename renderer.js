@@ -162,11 +162,11 @@
   var screensaverActive = false;
 
   function resetAfkTimer() {
+    if (manualRain) return; // Don't interrupt manual toggle
     if (screensaverActive) {
       screensaverActive = false;
       rain.stop();
       setTimeout(function () { rain.hide(); }, FADE_DURATION);
-      // Refocus the last active terminal
       for (var i = 0; i < entries.length; i++) {
         if (document.activeElement === entries[i].terminal.textarea) {
           entries[i].terminal.focus();
@@ -183,6 +183,18 @@
     screensaverActive = true;
     rain.canvas = document.getElementById('matrix-rain');
     rain.start();
+  }
+
+  var manualRain = false;
+
+  function toggleScreensaver() {
+    if (screensaverActive) {
+      manualRain = false;
+      resetAfkTimer();
+    } else {
+      manualRain = true;
+      startScreensaver();
+    }
   }
 
   function initAfkWatcher() {
@@ -527,6 +539,7 @@
       if (e.key === 'P') { e.preventDefault(); openSnippetPalette(); return; }
       if (e.key === 'C') { e.preventDefault(); copySelection(); return; }
       if (e.key === 'V') { e.preventDefault(); pasteClipboard(); return; }
+      if (e.key === 'M') { e.preventDefault(); toggleScreensaver(); return; }
     }
   });
 
