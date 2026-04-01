@@ -40,6 +40,12 @@ npm install
 npm start
 ```
 
+Benchmark mode:
+
+```bash
+npm run benchmark
+```
+
 > Requires **Node.js 18+** and a system that can compile native modules ([node-pty](https://github.com/nicktomlin/node-pty)).
 
 ## Features
@@ -134,6 +140,35 @@ When a command finishes in a terminal while the window is not focused, you get a
 ### WebGL rendering
 
 Terminals use GPU-accelerated WebGL rendering via `xterm-addon-webgl` for smooth scrolling and fast output. Falls back to Canvas 2D automatically if WebGL is not available.
+
+### Adaptive GPU policy
+
+Construct now leaves hardware acceleration enabled by default. On WSL, the `npm start` and `npm run benchmark` launchers auto-select the Mesa `d3d12` backend and tell Chromium to ignore the default GPU blocklist so xterm can reach the real WSLg D3D12 path on supported machines.
+
+You can override the policy manually with:
+
+- `CONSTRUCT_DISABLE_GPU=1 npm start`
+- `CONSTRUCT_FORCE_GPU=1 npm start`
+- `CONSTRUCT_WSL_D3D12=0 npm start`
+- `CONSTRUCT_IGNORE_GPU_BLOCKLIST=0 npm start`
+- `npm start -- --disable-gpu`
+- `npm start -- --force-gpu`
+- `npm start -- --disable-wsl-d3d12`
+- `npm start -- --respect-gpu-blocklist`
+
+If you bypass the launcher and run `electron .` directly, you also bypass the automatic WSL renderer setup.
+
+### Built-in benchmark mode
+
+`npm run benchmark` launches Construct in a scripted benchmark mode that runs:
+
+- `1`, `4`, `6`, and `12` pane layouts
+- heavy synthetic output
+- scrollback movement
+- window resize sweeps
+- TUI-style full-screen repaints
+
+Results are written to `.construct-benchmarks/` as JSON. The benchmark uses synthetic main-process IPC output, so it is focused on Construct's renderer and terminal presentation path rather than shell command speed.
 
 ### Global hotkey
 

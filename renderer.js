@@ -17,6 +17,12 @@
   var searchVisible = false;
   var snippetVisible = false;
   var layoutPickerVisible = false;
+  var runtimeInfo = null;
+  var benchmarkState = {
+    active: false,
+    reportPath: '',
+    status: '',
+  };
 
   // ── Layout Presets ──────────────────────────────────────────
 
@@ -283,9 +289,346 @@
     resetAfkTimer();
   }
 
+  function sleep(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function roundNumber(value) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function percentile(values, fraction) {
+    if (!values.length) return 0;
+
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var index = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * fraction)));
+    return roundNumber(sorted[index]);
+  }
+
+  function setBenchmarkStatus(text) {
+    benchmarkState.status = text;
+
+    var node = document.getElementById('benchmark-status');
+    if (!node) return;
+
+    node.textContent = text;
+    node.classList.toggle('active', Boolean(text));
+  }
+
+  function createFrameMonitor() {
+    var active = false;
+    var frameIntervals = [];
+    var frameCount = 0;
+    var totalFrameMs = 0;
+    var maxFrameMs = 0;
+    var over32Ms = 0;
+    var over50Ms = 0;
+    var rafId = 0;
+    var previousTs = 0;
+
+    function tick(ts) {
+      if (!active) return;
+
+      if (previousTs) {
+        var frameMs = ts - previousTs;
+        frameIntervals.push(frameMs);
+        totalFrameMs += frameMs;
+        frameCount++;
+        if (frameMs > maxFrameMs) maxFrameMs = frameMs;
+        if (frameMs > 32) over32Ms++;
+        if (frameMs > 50) over50Ms++;
+      }
+
+      previousTs = ts;
+      rafId = requestAnimationFrame(tick);
+    }
+
+    return {
+      start: function () {
+        if (active) return;
+        active = true;
+        previousTs = 0;
+        rafId = requestAnimationFrame(tick);
+      },
+      stop: function () {
+        active = false;
+        if (rafId) cancelAnimationFrame(rafId);
+
+        var averageFrameMs = frameCount ? totalFrameMs / frameCount : 0;
+
+        return {
+          avgFps: averageFrameMs ? roundNumber(1000 / averageFrameMs) : 0,
+          avgFrameMs: roundNumber(averageFrameMs),
+          frameCount: frameCount,
+          longFrames32Ms: over32Ms,
+          longFrames50Ms: over50Ms,
+          maxFrameMs: roundNumber(maxFrameMs),
+          p95FrameMs: percentile(frameIntervals, 0.95),
+        };
+      },
+    };
+  }
+
+  function getActiveTerminalIds() {
+    var ids = [];
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i]) ids.push(i);
+    }
+    return ids;
+  }
+
+  function getRendererSummary() {
+    var renderers = [];
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i]) renderers.push(entries[i].rendererType);
+    }
+
+    var webglCount = 0;
+    var canvasCount = 0;
+    for (var j = 0; j < renderers.length; j++) {
+      if (renderers[j] === 'webgl') webglCount++;
+      else canvasCount++;
+    }
+
+    return {
+      canvasPanes: canvasCount,
+      renderers: renderers,
+      webglPanes: webglCount,
+    };
+  }
+
+  function probeWebglEnvironment() {
+    var canvas = document.createElement('canvas');
+    var contexts = ['webgl2', 'webgl', 'experimental-webgl'];
+
+    for (var i = 0; i < contexts.length; i++) {
+      var contextName = contexts[i];
+      var gl = null;
+
+      try {
+        gl = canvas.getContext(contextName, { antialias: false, powerPreference: 'high-performance' });
+      } catch (_error) {
+        gl = null;
+      }
+
+      if (!gl) continue;
+
+      var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      var vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+      var renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+
+      return {
+        contextName: contextName,
+        renderer: renderer,
+        vendor: vendor,
+        version: gl.getParameter(gl.VERSION),
+      };
+    }
+
+    return null;
+  }
+
+  function getTotalBytesReceived() {
+    var total = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i]) total += entries[i].bytesReceived;
+    }
+    return total;
+  }
+
+  function clearTerminalSurfaces() {
+    for (var i = 0; i < entries.length; i++) {
+      if (!entries[i]) continue;
+      entries[i].terminal.reset();
+      entries[i].terminal.clear();
+      entries[i].terminal.scrollToBottom();
+    }
+  }
+
+  async function waitForRenderIdle(quietMs, timeoutMs) {
+    var quietFor = quietMs || 150;
+    var deadline = Date.now() + (timeoutMs || 8000);
+    var quietSince = 0;
+
+    while (Date.now() < deadline) {
+      var idle = true;
+      var now = Date.now();
+
+      for (var i = 0; i < entries.length; i++) {
+        if (!entries[i]) continue;
+        if (entries[i].pendingWrites > 0) {
+          idle = false;
+          break;
+        }
+        if (entries[i].lastOutputTime && now - entries[i].lastOutputTime < quietFor) {
+          idle = false;
+          break;
+        }
+      }
+
+      if (idle) {
+        if (!quietSince) quietSince = now;
+        if (now - quietSince >= quietFor) return true;
+      } else {
+        quietSince = 0;
+      }
+
+      await sleep(50);
+    }
+
+    return false;
+  }
+
+  async function measurePhase(name, work) {
+    var frameMonitor = createFrameMonitor();
+    var startedAt = performance.now();
+    frameMonitor.start();
+
+    await work();
+
+    var renderIdle = await waitForRenderIdle(150, 8000);
+    var endedAt = performance.now();
+    var frameStats = frameMonitor.stop();
+
+    return {
+      durationMs: roundNumber(endedAt - startedAt),
+      frameStats: frameStats,
+      name: name,
+      renderIdle: renderIdle,
+    };
+  }
+
+  async function runSyntheticPhase(name, scenario, options) {
+    var ids = getActiveTerminalIds();
+    var bytesBefore = getTotalBytesReceived();
+    var result = await measurePhase(name, async function () {
+      await window.appAPI.runBenchmarkScenario({
+        ids: ids,
+        options: options,
+        scenario: scenario,
+      });
+    });
+
+    result.bytesReceived = getTotalBytesReceived() - bytesBefore;
+    result.rendererSummary = getRendererSummary();
+    return result;
+  }
+
+  async function runScrollBenchmark() {
+    var steps = 120;
+    var stepSize = 3;
+    var delayMs = 12;
+    var result = await measurePhase('scroll', async function () {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i]) entries[i].terminal.scrollToTop();
+      }
+
+      await sleep(120);
+
+      for (var step = 0; step < steps; step++) {
+        for (var j = 0; j < entries.length; j++) {
+          if (entries[j]) entries[j].terminal.scrollLines(stepSize);
+        }
+        await sleep(delayMs);
+      }
+
+      for (var k = 0; k < entries.length; k++) {
+        if (entries[k]) entries[k].terminal.scrollToBottom();
+      }
+    });
+
+    result.rendererSummary = getRendererSummary();
+    result.steps = steps;
+    result.stepDelayMs = delayMs;
+    result.stepSize = stepSize;
+    return result;
+  }
+
+  async function runResizeBenchmark() {
+    var sizes = [
+      { width: 1200, height: 800 },
+      { width: 1440, height: 900 },
+      { width: 1024, height: 720 },
+      { width: 1600, height: 960 },
+      { width: 1200, height: 800 },
+    ];
+
+    var result = await measurePhase('resize', async function () {
+      for (var i = 0; i < sizes.length; i++) {
+        await window.windowAPI.setBounds(sizes[i]);
+        await sleep(250);
+      }
+    });
+
+    result.rendererSummary = getRendererSummary();
+    result.sizes = sizes;
+    return result;
+  }
+
+  async function runBenchmarkPass(paneCount) {
+    setBenchmarkStatus('benchmark: ' + paneCount + ' panes');
+    setLayout(paneCount);
+    focusTerminal(0);
+    await sleep(300);
+    await waitForRenderIdle(120, 3000);
+    clearTerminalSurfaces();
+
+    return {
+      paneCount: paneCount,
+      phases: [
+        await runSyntheticPhase('heavy-output', 'heavy-output', {
+          batchSize: 60,
+          lineCount: 2500,
+          lineWidth: 110,
+        }),
+        await runScrollBenchmark(),
+        await runResizeBenchmark(),
+        await runSyntheticPhase('tui', 'tui', {
+          frameCount: 90,
+          frameDelayMs: 16,
+          rowCount: 14,
+          rowWidth: 32,
+        }),
+      ],
+      rendererSummary: getRendererSummary(),
+    };
+  }
+
+  async function runBenchmarks() {
+    benchmarkState.active = true;
+    setBenchmarkStatus('benchmark: collecting runtime info');
+
+    var report = {
+      completedAt: null,
+      method: 'synthetic main-process IPC output benchmark',
+      results: [],
+      runtime: Object.assign({}, runtimeInfo, {
+        webglProbe: probeWebglEnvironment(),
+      }),
+      startedAt: new Date().toISOString(),
+    };
+
+    var paneCounts = [1, 4, 6, 12];
+    for (var i = 0; i < paneCounts.length; i++) {
+      report.results.push(await runBenchmarkPass(paneCounts[i]));
+    }
+
+    report.completedAt = new Date().toISOString();
+    report.reportPath = await window.appAPI.saveBenchmarkReport(report);
+    benchmarkState.reportPath = report.reportPath;
+
+    setBenchmarkStatus('benchmark complete\n' + report.reportPath);
+    console.log('[construct benchmark] report saved to', report.reportPath, report);
+
+    await sleep(1200);
+    window.windowAPI.close();
+  }
+
   // ── Terminal Management ─────────────────────────────────────
 
-  /** @type {({ terminal: *, fitAddon: *, searchAddon: *, locked: boolean, lastOutputTime: number } | null)[]} */
+  /** @type {({ terminal: *, fitAddon: *, searchAddon: *, locked: boolean, lastOutputTime: number, pendingWrites: number, bytesReceived: number, rendererType: string } | null)[]} */
   var entries = [];
   var focusFollowsTimer = null;
 
@@ -347,10 +690,12 @@
     terminal.open(container);
 
     // WebGL renderer — 5-10x faster than Canvas 2D
+    var rendererType = 'canvas';
     try {
       var webglAddon = new WebglAddon();
       webglAddon.onContextLoss(function () { webglAddon.dispose(); });
       terminal.loadAddon(webglAddon);
+      rendererType = 'webgl';
     } catch (e) {
       // WebGL not available, falls back to canvas automatically
     }
@@ -384,12 +729,19 @@
     // pty output -> terminal display + track activity for notifications
     var outputTimer = null;
     window.terminalAPI.onData(id, function (data) {
-      terminal.write(data);
-      if (entries[id]) entries[id].lastOutputTime = Date.now();
+      if (entries[id]) {
+        entries[id].lastOutputTime = Date.now();
+        entries[id].bytesReceived += data.length;
+        entries[id].pendingWrites++;
+      }
+
+      terminal.write(data, function () {
+        if (entries[id]) entries[id].pendingWrites = Math.max(0, entries[id].pendingWrites - 1);
+      });
 
       clearTimeout(outputTimer);
       outputTimer = setTimeout(function () {
-        if (!document.hasFocus()) {
+        if (!benchmarkState.active && !document.hasFocus()) {
           window.terminalAPI.notify(id);
         }
       }, 3000);
@@ -424,7 +776,16 @@
       clearTimeout(focusFollowsTimer);
     });
 
-    entries[id] = { terminal: terminal, fitAddon: fitAddon, searchAddon: searchAddon, locked: false, lastOutputTime: 0 };
+    entries[id] = {
+      terminal: terminal,
+      fitAddon: fitAddon,
+      searchAddon: searchAddon,
+      locked: false,
+      lastOutputTime: 0,
+      pendingWrites: 0,
+      bytesReceived: 0,
+      rendererType: rendererType,
+    };
   }
 
   function setLayout(count) {
@@ -909,13 +1270,22 @@
     }, 50);
   });
 
-  function boot() {
+  async function boot() {
+    runtimeInfo = await window.appAPI.getRuntimeInfo();
     initWindowControls();
-    runBootRain().then(function () {
-      setLayout(getInitialCount());
+
+    if (runtimeInfo && runtimeInfo.benchmarkMode) {
+      setLayout(1);
       focusTerminal(0);
-      initAfkWatcher();
-    });
+      await sleep(200);
+      await runBenchmarks();
+      return;
+    }
+
+    await runBootRain();
+    setLayout(getInitialCount());
+    focusTerminal(0);
+    initAfkWatcher();
   }
 
   if (document.readyState === 'loading') {
