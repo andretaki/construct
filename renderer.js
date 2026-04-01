@@ -149,42 +149,40 @@
         this.drops[i]++;
       }
 
-      // Subliminal message — spawn every ~4 seconds
-      if (this.frameCount % 240 === 0 && !this.activeMsg) {
+      // Subliminal message — spawn every ~8 seconds
+      if (this.frameCount % 480 === 0 && !this.activeMsg) {
         var text = this.subliminals[this.subliminalIdx];
         this.subliminalIdx = (this.subliminalIdx + 1) % this.subliminals.length;
-        // Center-ish, with some randomness
-        var x = w * 0.15 + Math.random() * w * 0.5;
-        var startY = h * 0.15 + Math.random() * h * 0.4;
+        var x = w * 0.1 + Math.random() * w * 0.6;
+        var startY = h * 0.1 + Math.random() * h * 0.5;
         this.activeMsg = { x: x, y: startY, charIdx: 0, text: text, age: 0 };
       }
 
-      // Render trailing message vertically — one char every 2 frames
+      // Render — same size as rain, blends in, subtle green glow
       if (this.activeMsg) {
         var m = this.activeMsg;
         m.age++;
-        if (m.age % 2 === 0 && m.charIdx < m.text.length) {
+        if (m.age % 3 === 0 && m.charIdx < m.text.length) {
           m.charIdx++;
         }
         ctx.save();
-        var msgFs = 20;
-        // Draw all revealed characters going straight down
         for (var c = 0; c < m.charIdx; c++) {
           var isLead = (c === m.charIdx - 1);
           if (isLead) {
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold ' + msgFs + 'px monospace';
+            ctx.fillStyle = 'rgba(170, 255, 170, 0.6)';
+            ctx.font = 'bold ' + fs + 'px monospace';
           } else {
-            ctx.fillStyle = '#0f0';
-            ctx.font = msgFs + 'px monospace';
+            var fade = Math.max(0.15, 0.45 - (m.charIdx - c) * 0.03);
+            ctx.fillStyle = 'rgba(0, 255, 70, ' + fade + ')';
+            ctx.font = fs + 'px monospace';
           }
-          ctx.fillText(m.text[c], m.x, m.y + c * (msgFs + 2));
+          ctx.fillText(m.text[c], m.x, m.y + c * (fs + 1));
         }
         ctx.restore();
-        // After fully revealed, let it linger then clear
+        // Fade out quicker
         if (m.charIdx >= m.text.length) {
           m.age++;
-          if (m.age > m.text.length * 2 + 80) this.activeMsg = null;
+          if (m.age > m.text.length * 2 + 40) this.activeMsg = null;
         }
       }
 
