@@ -286,6 +286,7 @@
 
   /** @type {({ terminal: *, fitAddon: *, searchAddon: *, locked: boolean, lastOutputTime: number } | null)[]} */
   var entries = [];
+  var focusFollowsTimer = null;
 
   function getLayout(count) {
     for (var i = 0; i < LAYOUTS.length; i++) {
@@ -406,6 +407,21 @@
         if (newName !== null && newName.trim()) labelName.textContent = newName.trim();
       });
     }
+
+    // Focus-follows-mouse — hover to focus with debounce
+    container.addEventListener('mouseenter', function () {
+      clearTimeout(focusFollowsTimer);
+      focusFollowsTimer = setTimeout(function () {
+        if (layoutPickerVisible || snippetVisible || searchVisible || screensaverActive) return;
+        if (entries[id] && entries[id].terminal) {
+          entries[id].terminal.focus();
+        }
+      }, 50);
+    });
+
+    container.addEventListener('mouseleave', function () {
+      clearTimeout(focusFollowsTimer);
+    });
 
     entries[id] = { terminal: terminal, fitAddon: fitAddon, searchAddon: searchAddon, locked: false, lastOutputTime: 0 };
   }
