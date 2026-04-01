@@ -167,13 +167,67 @@
     });
   }
 
-  // Re-fit terminals whenever the window is resized
+  // ── Focus Management & Keyboard Shortcuts ────────────────────
+
+  function focusTerminal(id) {
+    if (id >= 0 && id < entries.length) {
+      entries[id].terminal.focus();
+    }
+  }
+
+  function renameTerminal(id, name) {
+    var label = document.querySelector('#terminal-' + id + ' .label-name');
+    if (label) { label.textContent = name; }
+  }
+
+  // Ctrl+1-6 to focus terminals, Ctrl+` to cycle
+  document.addEventListener('keydown', function (e) {
+    if (!e.ctrlKey) return;
+
+    // Ctrl+1 through Ctrl+6
+    if (e.key >= '1' && e.key <= '6') {
+      e.preventDefault();
+      focusTerminal(parseInt(e.key, 10) - 1);
+      return;
+    }
+
+    // Ctrl+` to cycle to next terminal
+    if (e.key === '`') {
+      e.preventDefault();
+      var current = -1;
+      for (var i = 0; i < entries.length; i++) {
+        if (document.activeElement === entries[i].terminal.textarea) {
+          current = i;
+          break;
+        }
+      }
+      focusTerminal((current + 1) % entries.length);
+    }
+  });
+
+  // ── Window Controls ──────────────────────────────────────────
+
+  function initWindowControls() {
+    document.getElementById('btn-minimize').addEventListener('click', function () {
+      window.windowAPI.minimize();
+    });
+    document.getElementById('btn-maximize').addEventListener('click', function () {
+      window.windowAPI.maximize();
+    });
+    document.getElementById('btn-close').addEventListener('click', function () {
+      window.windowAPI.close();
+    });
+  }
+
+  // ── Resize & Boot ────────────────────────────────────────────
+
   window.addEventListener('resize', refitAll);
 
-  // Boot: Matrix rain → fade → init terminals
   function boot() {
+    initWindowControls();
     runMatrixRain().then(function () {
       initTerminals();
+      focusTerminal(0);
     });
   }
 

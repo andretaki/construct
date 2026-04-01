@@ -1,5 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('windowAPI', {
+  minimize: () => ipcRenderer.send('window-minimize'),
+  maximize: () => ipcRenderer.send('window-maximize'),
+  close: () => ipcRenderer.send('window-close'),
+});
+
 contextBridge.exposeInMainWorld('terminalAPI', {
   send: (id, data) => {
     ipcRenderer.send(`pty-input-${id}`, data);

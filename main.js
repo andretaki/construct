@@ -13,6 +13,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    frame: false,
     backgroundColor: '#11111b',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -51,6 +52,13 @@ function createPtys() {
     ptys.push(ptyProcess);
   }
 }
+
+ipcMain.on('window-minimize', () => { mainWindow.minimize(); });
+ipcMain.on('window-maximize', () => {
+  if (mainWindow.isMaximized()) { mainWindow.unmaximize(); }
+  else { mainWindow.maximize(); }
+});
+ipcMain.on('window-close', () => { mainWindow.close(); });
 
 app.whenReady().then(() => {
   createWindow();
