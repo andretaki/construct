@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Notification } = require('electron');
 const pty = require('node-pty');
 const path = require('path');
 const os = require('os');
@@ -76,6 +76,17 @@ function setupPtyIPC() {
   }
 }
 
+// Process completion notifications
+ipcMain.on('pty-notify', (_event, id) => {
+  if (Notification.isSupported()) {
+    new Notification({
+      title: 'Terminalz',
+      body: 'Command finished in terminal ' + (id + 1),
+      silent: true,
+    }).show();
+  }
+});
+
 ipcMain.on('window-minimize', () => { mainWindow.minimize(); });
 ipcMain.on('window-maximize', () => {
   if (mainWindow.isMaximized()) { mainWindow.unmaximize(); }
@@ -86,11 +97,21 @@ ipcMain.on('window-close', () => { mainWindow.close(); });
 app.whenReady().then(() => {
   createWindow();
   setupPtyIPC();
-  // Spawn first terminal immediately, rest are lazy
   spawnPty(0);
+
+  // F12 global hotkey — Quake-style toggle
+  globalShortcut.register('F12', () => {
+    if (mainWindow.isVisible() && mainWindow.isFocused()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
+  globalShortcut.unregisterAll();
   ptys.forEach((p) => { if (p) p.kill(); });
   app.quit();
 });

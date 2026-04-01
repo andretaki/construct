@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('terminalAPI', {
   resize: (id, cols, rows) => {
     ipcRenderer.send(`pty-resize-${id}`, { cols, rows });
   },
+  notify: (id) => {
+    ipcRenderer.send('pty-notify', id);
+  },
 });

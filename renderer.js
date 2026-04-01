@@ -126,7 +126,7 @@
 
   // ── Terminal Setup ───────────────────────────────────────────
 
-  /** @type {{ terminal: *, fitAddon: * }[]} */
+  /** @type {{ terminal: *, fitAddon: *, locked: boolean, lastOutputTime: number }[]} */
   var entries = [];
 
   function initTerminals() {
@@ -156,20 +156,46 @@
 
       fitAddon.fit();
 
-      // User input → pty
+      // User input → pty (blocked when locked)
       terminal.onData(function (data) {
-        window.terminalAPI.send(id, data);
+        if (!entries[id] || !entries[id].locked) {
+          window.terminalAPI.send(id, data);
+        }
       });
 
-      // pty output → terminal display
+      // Multiline paste warning
+      terminal.textarea.addEventListener('paste', function (e) {
+        var text = (e.clipboardData || window.clipboardData).getData('text');
+        var lines = text.split('\n').length;
+        if (lines > 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (confirm('Paste ' + lines + ' lines into terminal ' + (id + 1) + '?')) {
+            window.terminalAPI.send(id, text);
+          }
+        }
+      }, true);
+
+      // pty output → terminal display + track activity for notifications
+      var outputTimer = null;
       window.terminalAPI.onData(id, function (data) {
         terminal.write(data);
+        entries[id].lastOutputTime = Date.now();
+
+        // Process completion detection: if output stops for 3s after activity,
+        // and the window is blurred, fire a notification
+        clearTimeout(outputTimer);
+        outputTimer = setTimeout(function () {
+          if (!document.hasFocus()) {
+            window.terminalAPI.notify(id);
+          }
+        }, 3000);
       });
 
       // Send initial dimensions to pty
       window.terminalAPI.resize(id, terminal.cols, terminal.rows);
 
-      entries.push({ terminal, fitAddon });
+      entries.push({ terminal, fitAddon, locked: false, lastOutputTime: 0 });
     }
   }
 
@@ -193,7 +219,29 @@
     if (label) { label.textContent = name; }
   }
 
-  // Ctrl+1-6 to focus terminals, Ctrl+` to cycle
+  function getFocusedTerminalId() {
+    for (var i = 0; i < entries.length; i++) {
+      if (document.activeElement === entries[i].terminal.textarea) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function toggleLock(id) {
+    if (id < 0 || id >= entries.length) return;
+    entries[id].locked = !entries[id].locked;
+    var lockIcon = document.querySelector('#terminal-' + id + ' .label-lock');
+    if (lockIcon) {
+      lockIcon.style.display = entries[id].locked ? 'flex' : 'none';
+    }
+    var cell = document.getElementById('terminal-' + id);
+    if (cell) {
+      cell.classList.toggle('locked', entries[id].locked);
+    }
+  }
+
+  // Ctrl+1-6 focus, Ctrl+` cycle, Ctrl+Shift+L lock
   document.addEventListener('keydown', function (e) {
     if (!e.ctrlKey) return;
 
@@ -207,14 +255,14 @@
     // Ctrl+` to cycle to next terminal
     if (e.key === '`') {
       e.preventDefault();
-      var current = -1;
-      for (var i = 0; i < entries.length; i++) {
-        if (document.activeElement === entries[i].terminal.textarea) {
-          current = i;
-          break;
-        }
-      }
-      focusTerminal((current + 1) % entries.length);
+      focusTerminal((getFocusedTerminalId() + 1) % entries.length);
+      return;
+    }
+
+    // Ctrl+Shift+L to toggle read-only lock
+    if (e.key === 'L' && e.shiftKey) {
+      e.preventDefault();
+      toggleLock(getFocusedTerminalId());
     }
   });
 
