@@ -8,27 +8,125 @@
 (function () {
   'use strict';
 
-  const { Terminal } = window;
-  const { FitAddon } = window;
+  const Terminal = window.Terminal;
+  const FitAddon = window.FitAddon.FitAddon;
 
   const TERMINAL_COUNT = 6;
 
   const TERMINAL_OPTIONS = {
     cursorBlink: true,
+    cursorStyle: 'bar',
+    cursorWidth: 2,
+    cursorInactiveStyle: 'outline',
     fontSize: 13,
-    fontFamily: 'monospace',
+    fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'SF Mono', 'Menlo', 'Consolas', monospace",
+    fontWeight: '400',
+    fontWeightBold: '600',
+    lineHeight: 1.2,
+    letterSpacing: 0,
+    scrollback: 5000,
+    smoothScrollDuration: 100,
+    drawBoldTextInBrightColors: true,
+    minimumContrastRatio: 1,
     theme: {
-      background: '#000000',
-      foreground: '#cccccc',
+      background: '#1e1e2e',
+      foreground: '#cdd6f4',
+      cursor: '#f5e0dc',
+      cursorAccent: '#1e1e2e',
+      selectionBackground: 'rgba(137, 180, 250, 0.25)',
+      selectionForeground: '#cdd6f4',
+      selectionInactiveBackground: 'rgba(137, 180, 250, 0.12)',
+      black: '#45475a',
+      red: '#f38ba8',
+      green: '#a6e3a1',
+      yellow: '#f9e2af',
+      blue: '#89b4fa',
+      magenta: '#cba6f7',
+      cyan: '#94e2d5',
+      white: '#bac2de',
+      brightBlack: '#585b70',
+      brightRed: '#f38ba8',
+      brightGreen: '#a6e3a1',
+      brightYellow: '#f9e2af',
+      brightBlue: '#89b4fa',
+      brightMagenta: '#cba6f7',
+      brightCyan: '#94e2d5',
+      brightWhite: '#a6adc8',
     },
   };
 
-  /**
-   * @typedef {{ terminal: import('xterm').Terminal, fitAddon: FitAddon }} TerminalEntry
-   */
+  // ── Matrix Rain Boot Sequence ──────────────────────────────────
+  var BOOT_DURATION = 2500;
+  var FADE_DURATION = 800;
 
-  /** @type {TerminalEntry[]} */
-  const entries = [];
+  function runMatrixRain() {
+    var canvas = document.getElementById('matrix-rain');
+    if (!canvas) { return Promise.resolve(); }
+
+    var ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    var fontSize = 14;
+    var columns = Math.floor(canvas.width / fontSize);
+    var drops = [];
+    for (var i = 0; i < columns; i++) {
+      drops[i] = Math.random() * -50;
+    }
+
+    var chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFZ';
+    var charArr = chars.split('');
+
+    var animId;
+    var startTime = Date.now();
+
+    function draw() {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (var i = 0; i < drops.length; i++) {
+        var char = charArr[Math.floor(Math.random() * charArr.length)];
+
+        // Lead character is bright white-green, trail is green
+        if (Math.random() > 0.3) {
+          ctx.fillStyle = '#0f0';
+          ctx.font = fontSize + 'px monospace';
+        } else {
+          ctx.fillStyle = '#aff';
+          ctx.font = 'bold ' + fontSize + 'px monospace';
+        }
+
+        ctx.fillText(char, i * fontSize, drops[i] * fontSize);
+
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+          drops[i] = 0;
+        }
+        drops[i]++;
+      }
+
+      if (Date.now() - startTime < BOOT_DURATION) {
+        animId = requestAnimationFrame(draw);
+      }
+    }
+
+    animId = requestAnimationFrame(draw);
+
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        cancelAnimationFrame(animId);
+        canvas.classList.add('fade-out');
+        setTimeout(function () {
+          canvas.remove();
+          resolve();
+        }, FADE_DURATION);
+      }, BOOT_DURATION);
+    });
+  }
+
+  // ── Terminal Setup ───────────────────────────────────────────
+
+  /** @type {{ terminal: *, fitAddon: * }[]} */
+  var entries = [];
 
   function initTerminals() {
     for (let id = 0; id < TERMINAL_COUNT; id++) {
@@ -72,10 +170,16 @@
   // Re-fit terminals whenever the window is resized
   window.addEventListener('resize', refitAll);
 
-  // Initialise once the DOM is ready
+  // Boot: Matrix rain → fade → init terminals
+  function boot() {
+    runMatrixRain().then(function () {
+      initTerminals();
+    });
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initTerminals);
+    document.addEventListener('DOMContentLoaded', boot);
   } else {
-    initTerminals();
+    boot();
   }
 })();
