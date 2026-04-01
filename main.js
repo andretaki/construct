@@ -85,7 +85,7 @@ function setupPtyIPC() {
 ipcMain.on('pty-notify', (_event, id) => {
   if (Notification.isSupported()) {
     new Notification({
-      title: 'Terminalz',
+      title: 'Construct',
       body: 'Command finished in terminal ' + (id + 1),
       silent: true,
     }).show();
