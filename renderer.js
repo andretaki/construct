@@ -41,6 +41,134 @@
   var layoutPickerSelectedIdx = 0;
   var zoomedTerminalId = -1;
 
+  // ── Themes ─────────────────────────────────────────────────
+
+  var THEMES = {
+    dark: {
+      name: 'dark',
+      terminal: {
+        background: '#1e1e2e',
+        foreground: '#cdd6f4',
+        cursor: '#f5e0dc',
+        cursorAccent: '#1e1e2e',
+        selectionBackground: 'rgba(137, 180, 250, 0.25)',
+        selectionForeground: '#cdd6f4',
+        selectionInactiveBackground: 'rgba(137, 180, 250, 0.12)',
+        black: '#45475a',
+        red: '#f38ba8',
+        green: '#a6e3a1',
+        yellow: '#f9e2af',
+        blue: '#89b4fa',
+        magenta: '#cba6f7',
+        cyan: '#94e2d5',
+        white: '#bac2de',
+        brightBlack: '#585b70',
+        brightRed: '#f38ba8',
+        brightGreen: '#a6e3a1',
+        brightYellow: '#f9e2af',
+        brightBlue: '#89b4fa',
+        brightMagenta: '#cba6f7',
+        brightCyan: '#94e2d5',
+        brightWhite: '#a6adc8',
+      },
+      css: {
+        '--bg-base': '#11111b',
+        '--bg-surface': '#1e1e2e',
+        '--bg-overlay': '#313244',
+        '--text-primary': '#cdd6f4',
+        '--text-muted': '#585b70',
+        '--accent': '#89b4fa',
+        '--accent-bg': 'rgba(137, 180, 250, 0.1)',
+        '--accent-border': 'rgba(137, 180, 250, 0.5)',
+        '--border': 'rgba(127, 132, 156, 0.08)',
+        '--border-subtle': 'rgba(127, 132, 156, 0.06)',
+        '--inactive-dim': 'rgba(0, 0, 0, 0.15)',
+        '--danger': '#f38ba8',
+        '--danger-bg': 'rgba(243, 139, 168, 0.15)',
+        '--titlebar-bg': '#11111b',
+        '--rain-fg': '#0f0',
+        '--rain-bg': 'rgba(0, 0, 0, 0.05)',
+      },
+    },
+    daylight: {
+      name: 'daylight',
+      terminal: {
+        background: '#eff1f5',
+        foreground: '#4c4f69',
+        cursor: '#dc8a78',
+        cursorAccent: '#eff1f5',
+        selectionBackground: 'rgba(30, 102, 245, 0.2)',
+        selectionForeground: '#4c4f69',
+        selectionInactiveBackground: 'rgba(30, 102, 245, 0.1)',
+        black: '#5c5f77',
+        red: '#d20f39',
+        green: '#40a02b',
+        yellow: '#df8e1d',
+        blue: '#1e66f5',
+        magenta: '#8839ef',
+        cyan: '#179299',
+        white: '#acb0be',
+        brightBlack: '#6c6f85',
+        brightRed: '#d20f39',
+        brightGreen: '#40a02b',
+        brightYellow: '#df8e1d',
+        brightBlue: '#1e66f5',
+        brightMagenta: '#8839ef',
+        brightCyan: '#179299',
+        brightWhite: '#bcc0cc',
+      },
+      css: {
+        '--bg-base': '#e6e9ef',
+        '--bg-surface': '#eff1f5',
+        '--bg-overlay': '#ccd0da',
+        '--text-primary': '#4c4f69',
+        '--text-muted': '#8c8fa1',
+        '--accent': '#1e66f5',
+        '--accent-bg': 'rgba(30, 102, 245, 0.1)',
+        '--accent-border': 'rgba(30, 102, 245, 0.5)',
+        '--border': 'rgba(76, 79, 105, 0.12)',
+        '--border-subtle': 'rgba(76, 79, 105, 0.08)',
+        '--inactive-dim': 'rgba(255, 255, 255, 0.25)',
+        '--danger': '#d20f39',
+        '--danger-bg': 'rgba(210, 15, 57, 0.12)',
+        '--titlebar-bg': '#e6e9ef',
+        '--rain-fg': '#40a02b',
+        '--rain-bg': 'rgba(239, 241, 245, 0.08)',
+      },
+    },
+  };
+
+  var currentTheme = 'dark';
+
+  function applyTheme(themeName) {
+    var theme = THEMES[themeName];
+    if (!theme) return;
+    currentTheme = themeName;
+
+    // Update default options so new terminals get the right theme
+    TERMINAL_OPTIONS.theme = theme.terminal;
+
+    // Apply CSS variables
+    var root = document.documentElement;
+    var css = theme.css;
+    for (var key in css) {
+      root.style.setProperty(key, css[key]);
+    }
+
+    // Apply terminal theme to all open terminals
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i]) {
+        entries[i].terminal.options.theme = theme.terminal;
+      }
+    }
+
+    document.body.setAttribute('data-theme', themeName);
+  }
+
+  function toggleTheme() {
+    applyTheme(currentTheme === 'dark' ? 'daylight' : 'dark');
+  }
+
   var TERMINAL_OPTIONS = {
     allowTransparency: true,
     cursorBlink: true,
@@ -57,31 +185,7 @@
     smoothScrollDuration: 100,
     drawBoldTextInBrightColors: true,
     minimumContrastRatio: 1,
-    theme: {
-      background: 'rgba(30, 30, 46, 0.85)',
-      foreground: '#cdd6f4',
-      cursor: '#f5e0dc',
-      cursorAccent: '#1e1e2e',
-      selectionBackground: 'rgba(137, 180, 250, 0.25)',
-      selectionForeground: '#cdd6f4',
-      selectionInactiveBackground: 'rgba(137, 180, 250, 0.12)',
-      black: '#45475a',
-      red: '#f38ba8',
-      green: '#a6e3a1',
-      yellow: '#f9e2af',
-      blue: '#89b4fa',
-      magenta: '#cba6f7',
-      cyan: '#94e2d5',
-      white: '#bac2de',
-      brightBlack: '#585b70',
-      brightRed: '#f38ba8',
-      brightGreen: '#a6e3a1',
-      brightYellow: '#f9e2af',
-      brightBlue: '#89b4fa',
-      brightMagenta: '#cba6f7',
-      brightCyan: '#94e2d5',
-      brightWhite: '#a6adc8',
-    },
+    theme: THEMES.dark.terminal,
   };
 
   // ── Matrix Rain Engine (reusable for boot + screensaver) ────
@@ -95,6 +199,8 @@
     animId: null,
     drops: [],
     running: false,
+    throttled: false,
+    lastFrame: 0,
     chars: '\u30A2\u30A4\u30A6\u30A8\u30AA\u30AB\u30AD\u30AF\u30B1\u30B3\u30B5\u30B7\u30B9\u30BB\u30BD\u30BF\u30C1\u30C4\u30C6\u30C8\u30CA\u30CB\u30CC\u30CD\u30CE\u30CF\u30D2\u30D5\u30D8\u30DB\u30DE\u30DF\u30E0\u30E1\u30E2\u30E4\u30E6\u30E8\u30E9\u30EA\u30EB\u30EC\u30ED\u30EF\u30F2\u30F30123456789ABCDEFZ'.split(''),
     fontSize: 14,
     frameCount: 0,
@@ -129,6 +235,7 @@
       this.canvas = document.getElementById('matrix-rain');
       if (!this.canvas) return;
       this.canvas.style.display = 'block';
+      this.canvas.style.pointerEvents = 'none';
       this.canvas.classList.remove('fade-out');
       this.canvas.style.opacity = '1';
       this.ctx = this.canvas.getContext('2d');
@@ -145,6 +252,16 @@
 
     _draw: function () {
       if (!this.running) return;
+      // Throttle to ~15fps when used as screensaver to save CPU
+      if (this.throttled) {
+        var now = performance.now();
+        if (now - this.lastFrame < 66) {
+          var self = this;
+          this.animId = requestAnimationFrame(function () { self._draw(); });
+          return;
+        }
+        this.lastFrame = now;
+      }
       var ctx = this.ctx;
       var w = this.canvas.width;
       var h = this.canvas.height;
@@ -217,6 +334,7 @@
       this.animId = null;
       if (this.canvas) {
         this.canvas.classList.add('fade-out');
+        this.canvas.style.pointerEvents = 'none';
       }
     },
 
@@ -229,6 +347,7 @@
 
   // Boot sequence: rain for 2.5s then fade
   function runBootRain() {
+    rain.throttled = false;
     rain.start();
     return new Promise(function (resolve) {
       setTimeout(function () {
@@ -252,11 +371,23 @@
       screensaverActive = false;
       rain.stop();
       setTimeout(function () { rain.hide(); }, FADE_DURATION);
+      // Re-fit and refocus terminals after screensaver dismissal
+      // to clear any stale rendering state
       for (var i = 0; i < entries.length; i++) {
-        if (entries[i] && document.activeElement === entries[i].terminal.textarea) {
-          entries[i].terminal.focus();
+        if (entries[i]) {
+          entries[i].fitAddon.fit();
+        }
+      }
+      var focused = false;
+      for (var j = 0; j < entries.length; j++) {
+        if (entries[j] && document.activeElement === entries[j].terminal.textarea) {
+          entries[j].terminal.focus();
+          focused = true;
           break;
         }
+      }
+      if (!focused && entries[0]) {
+        entries[0].terminal.focus();
       }
     }
     clearTimeout(afkTimer);
@@ -267,6 +398,7 @@
     if (screensaverActive) return;
     screensaverActive = true;
     rain.canvas = document.getElementById('matrix-rain');
+    rain.throttled = true;
     rain.start();
   }
 
@@ -286,6 +418,9 @@
     ['keydown', 'mousemove', 'mousedown', 'touchstart'].forEach(function (evt) {
       document.addEventListener(evt, resetAfkTimer, { passive: true });
     });
+    // Dismiss screensaver when window regains focus (Wayland doesn't always
+    // fire keydown on the first interaction after focus returns)
+    window.addEventListener('focus', resetAfkTimer, { passive: true });
     resetAfkTimer();
   }
 
@@ -1222,6 +1357,7 @@
       if (e.key === 'M') { e.preventDefault(); toggleScreensaver(); return; }
       if (e.key === 'G') { e.preventDefault(); openLayoutPicker(); return; }
       if (e.key === 'Z') { e.preventDefault(); toggleZoom(); return; }
+      if (e.key === 'T') { e.preventDefault(); toggleTheme(); return; }
     }
   });
 
@@ -1271,6 +1407,7 @@
   });
 
   async function boot() {
+    applyTheme(currentTheme);
     runtimeInfo = await window.appAPI.getRuntimeInfo();
     initWindowControls();
 

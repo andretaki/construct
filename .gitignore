@@ -1,3 +1,4 @@
 node_modules/
 .gstack/
 .construct-benchmarks/
+.claude-transcripts/

@@ -37,6 +37,7 @@ const gpuMode = forceGpuDisable
       : 'enabled-default';
 
 let mainWindow;
+let preMaximizeBounds = null;
 const ptys = [];
 
 if (shouldSetWslGalliumDriver) {
@@ -56,8 +57,8 @@ function createWindow() {
     width: 1200,
     height: 800,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: !isWsl,
+    backgroundColor: isWsl ? '#1e1e2e' : '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -224,8 +225,17 @@ ipcMain.on('pty-notify', (_event, id) => {
 
 ipcMain.on('window-minimize', () => { mainWindow.minimize(); });
 ipcMain.on('window-maximize', () => {
-  if (mainWindow.isMaximized()) { mainWindow.unmaximize(); }
-  else { mainWindow.maximize(); }
+  const { screen } = require('electron');
+  if (preMaximizeBounds) {
+    // Restore to pre-maximize bounds
+    mainWindow.setBounds(preMaximizeBounds);
+    preMaximizeBounds = null;
+  } else {
+    // Save current bounds, then fill the work area
+    preMaximizeBounds = mainWindow.getBounds();
+    const display = screen.getDisplayMatching(preMaximizeBounds);
+    mainWindow.setBounds(display.workArea);
+  }
 });
 ipcMain.on('window-close', () => { mainWindow.close(); });
 

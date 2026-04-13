@@ -7,8 +7,9 @@
 html, body {
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background: var(--bg-base, #11111b);
   font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
+  transition: background 0.3s ease;
 }
 
 /* ── Custom Title Bar ──────────────────────────── */
@@ -18,16 +19,17 @@ html, body {
   align-items: center;
   justify-content: space-between;
   height: 32px;
-  background: #11111b;
+  background: var(--titlebar-bg, #11111b);
   -webkit-app-region: drag;
   user-select: none;
   padding: 0 8px;
-  border-bottom: 1px solid rgba(127, 132, 156, 0.06);
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 132, 156, 0.06));
+  transition: background 0.3s ease;
 }
 
 #titlebar-label {
   font-size: 12px;
-  color: #585b70;
+  color: var(--text-muted, #585b70);
   letter-spacing: 1px;
   font-weight: 600;
   text-transform: lowercase;
@@ -42,7 +44,7 @@ html, body {
 .titlebar-btn {
   background: none;
   border: none;
-  color: #585b70;
+  color: var(--text-muted, #585b70);
   width: 36px;
   height: 28px;
   font-size: 13px;
@@ -56,12 +58,12 @@ html, body {
 
 .titlebar-btn:hover {
   background: rgba(127, 132, 156, 0.12);
-  color: #cdd6f4;
+  color: var(--text-primary, #cdd6f4);
 }
 
 .titlebar-btn-close:hover {
-  background: rgba(243, 139, 168, 0.2);
-  color: #f38ba8;
+  background: var(--danger-bg, rgba(243, 139, 168, 0.2));
+  color: var(--danger, #f38ba8);
 }
 
 /* ── Matrix Rain Overlay ───────────────────────── */
@@ -96,14 +98,14 @@ html, body {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 25;
-  background: rgba(30, 30, 46, 0.8);
-  border: 1px solid rgba(137, 180, 250, 0.3);
+  background: var(--bg-overlay, rgba(30, 30, 46, 0.8));
+  border: 1px solid var(--accent-border, rgba(137, 180, 250, 0.3));
   border-radius: 8px;
   padding: 8px 20px;
   font-family: inherit;
   font-size: 18px;
   font-weight: 600;
-  color: #89b4fa;
+  color: var(--accent, #89b4fa);
   pointer-events: none;
   transition: opacity 0.3s ease;
   opacity: 0;
@@ -127,10 +129,10 @@ html, body {
   min-width: 240px;
   max-width: 420px;
   padding: 10px 12px;
-  border: 1px solid rgba(137, 180, 250, 0.24);
+  border: 1px solid var(--accent-border, rgba(137, 180, 250, 0.24));
   border-radius: 8px;
-  background: rgba(17, 17, 27, 0.92);
-  color: #cdd6f4;
+  background: var(--bg-base, rgba(17, 17, 27, 0.92));
+  color: var(--text-primary, #cdd6f4);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -153,7 +155,8 @@ html, body {
   height: calc(100vh - 32px);
   gap: 2px;
   padding: 0 2px 2px 2px;
-  background: rgba(17, 17, 27, 0.85);
+  background: var(--bg-base, #11111b);
+  transition: background 0.3s ease;
 }
 
 /* ── Layout Picker ────────────────────────────── */
@@ -181,8 +184,8 @@ html, body {
   transform: translateX(-50%);
   z-index: 30;
   width: 320px;
-  background: #1e1e2e;
-  border: 1px solid rgba(137, 180, 250, 0.3);
+  background: var(--bg-surface, #1e1e2e);
+  border: 1px solid var(--accent-border, rgba(137, 180, 250, 0.3));
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -196,10 +199,10 @@ html, body {
   padding: 12px 16px;
   font-size: 12px;
   font-weight: 600;
-  color: #585b70;
+  color: var(--text-muted, #585b70);
   letter-spacing: 1px;
   text-transform: uppercase;
-  border-bottom: 1px solid rgba(127, 132, 156, 0.1);
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 132, 156, 0.1));
 }
 
 #layout-list {
@@ -209,7 +212,7 @@ html, body {
 
 .layout-item {
   padding: 10px 16px;
-  color: #bac2de;
+  color: var(--text-primary, #bac2de);
   font-size: 13px;
   cursor: pointer;
   display: flex;
@@ -218,8 +221,8 @@ html, body {
 }
 
 .layout-item:hover, .layout-item.selected {
-  background: rgba(137, 180, 250, 0.1);
-  color: #cdd6f4;
+  background: var(--accent-bg, rgba(137, 180, 250, 0.1));
+  color: var(--text-primary, #cdd6f4);
 }
 
 .layout-preview {
@@ -254,11 +257,11 @@ html, body {
 
 .terminal-cell {
   position: relative;
-  background: rgba(30, 30, 46, 0.85);
+  background: var(--bg-surface, #1e1e2e);
   overflow: hidden;
   border-radius: 6px;
-  border: 1px solid rgba(127, 132, 156, 0.08);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid var(--border, rgba(127, 132, 156, 0.08));
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
 }
 
 .terminal-cell::after {
@@ -268,14 +271,14 @@ html, body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--inactive-dim, rgba(0, 0, 0, 0.15));
   z-index: 2;
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
 
 .terminal-cell:focus-within {
-  border-color: rgba(137, 180, 250, 0.5);
+  border-color: var(--accent-border, rgba(137, 180, 250, 0.5));
   box-shadow:
     0 0 1px rgba(137, 180, 250, 0.4),
     0 0 8px rgba(137, 180, 250, 0.15),
@@ -308,8 +311,8 @@ html, body {
 .label-num {
   font-size: 10px;
   font-weight: 700;
-  color: #89b4fa;
-  background: rgba(137, 180, 250, 0.1);
+  color: var(--accent, #89b4fa);
+  background: var(--accent-bg, rgba(137, 180, 250, 0.1));
   width: 16px;
   height: 16px;
   display: flex;
@@ -320,7 +323,7 @@ html, body {
 
 .label-name {
   font-size: 10px;
-  color: #585b70;
+  color: var(--text-muted, #585b70);
   font-weight: 500;
 }
 
@@ -332,7 +335,7 @@ html, body {
 
 .label-zoom {
   font-size: 9px;
-  color: #89b4fa;
+  color: var(--accent, #89b4fa);
   font-weight: 600;
 }
 
@@ -341,8 +344,8 @@ html, body {
 }
 
 .terminal-cell.locked .label-num {
-  background: rgba(243, 139, 168, 0.15);
-  color: #f38ba8;
+  background: var(--danger-bg, rgba(243, 139, 168, 0.15));
+  color: var(--danger, #f38ba8);
 }
 
 .terminal-cell.locked:focus-within {
@@ -365,8 +368,8 @@ html, body {
 #broadcast-bar {
   display: none;
   height: 24px;
-  background: rgba(243, 139, 168, 0.15);
-  color: #f38ba8;
+  background: var(--danger-bg, rgba(243, 139, 168, 0.15));
+  color: var(--danger, #f38ba8);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 1px;
@@ -387,8 +390,8 @@ html, body {
   top: 32px;
   right: 8px;
   z-index: 20;
-  background: #1e1e2e;
-  border: 1px solid rgba(137, 180, 250, 0.3);
+  background: var(--bg-surface, #1e1e2e);
+  border: 1px solid var(--accent-border, rgba(137, 180, 250, 0.3));
   border-radius: 6px;
   padding: 4px 8px;
   align-items: center;
@@ -402,7 +405,7 @@ html, body {
 #search-input {
   background: none;
   border: none;
-  color: #cdd6f4;
+  color: var(--text-primary, #cdd6f4);
   font-family: inherit;
   font-size: 13px;
   width: 220px;
@@ -410,11 +413,11 @@ html, body {
 }
 
 #search-input::placeholder {
-  color: #585b70;
+  color: var(--text-muted, #585b70);
 }
 
 #search-close {
-  color: #585b70;
+  color: var(--text-muted, #585b70);
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
@@ -423,7 +426,7 @@ html, body {
 
 #search-close:hover {
   background: rgba(127, 132, 156, 0.12);
-  color: #cdd6f4;
+  color: var(--text-primary, #cdd6f4);
 }
 
 /* ── Snippet Palette ───────────────────────────── */
@@ -451,8 +454,8 @@ html, body {
   transform: translateX(-50%);
   z-index: 30;
   width: 480px;
-  background: #1e1e2e;
-  border: 1px solid rgba(137, 180, 250, 0.3);
+  background: var(--bg-surface, #1e1e2e);
+  border: 1px solid var(--accent-border, rgba(137, 180, 250, 0.3));
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -466,8 +469,8 @@ html, body {
   width: 100%;
   background: none;
   border: none;
-  border-bottom: 1px solid rgba(127, 132, 156, 0.1);
-  color: #cdd6f4;
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 132, 156, 0.1));
+  color: var(--text-primary, #cdd6f4);
   font-family: inherit;
   font-size: 14px;
   padding: 12px 16px;
@@ -475,7 +478,7 @@ html, body {
 }
 
 #snippet-input::placeholder {
-  color: #585b70;
+  color: var(--text-muted, #585b70);
 }
 
 #snippet-list {
@@ -485,7 +488,7 @@ html, body {
 
 .snippet-item {
   padding: 8px 16px;
-  color: #bac2de;
+  color: var(--text-primary, #bac2de);
   font-size: 13px;
   cursor: pointer;
   display: flex;
@@ -493,12 +496,12 @@ html, body {
 }
 
 .snippet-item:hover, .snippet-item.selected {
-  background: rgba(137, 180, 250, 0.1);
-  color: #cdd6f4;
+  background: var(--accent-bg, rgba(137, 180, 250, 0.1));
+  color: var(--text-primary, #cdd6f4);
 }
 
 .snippet-item .snippet-key {
-  color: #585b70;
+  color: var(--text-muted, #585b70);
   font-size: 11px;
 }
 
